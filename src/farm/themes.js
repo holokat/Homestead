@@ -2325,50 +2325,62 @@ function desertOuter(ctx) {
   }
   outerInstanced(g, new THREE.DodecahedronGeometry(0.8, 0), mat(0xb08a5e), rockPl);
 
-  // rolling sand dunes — bigger and more of them for an expansive desert
-  for (let i = 0; i < 14; i++) {
-    const p = outerPoint(ctx, rng, land.R, clear + 2);
+  // rolling sand dunes — big, smooth, low swells filling the desert floor
+  const duneCols = [0xead0a0, 0xe6c184, 0xdcb576, 0xd8ae68, 0xe3c088];
+  for (let i = 0; i < 30; i++) {
+    const p = outerPoint(ctx, rng, land.R, clear + 6);
     if (!p) continue;
-    const dune = ball(5 + rng() * 7, i % 2 ? 0xe6c184 : 0xd8ae68, 0.22, 10);
-    dune.position.set(p[0], land.heightAt(p[0], p[1]) + 0.2, p[1] - land.zC);
+    const dune = ball(9 + rng() * 13, duneCols[i % duneCols.length], 0.16, 12);
+    // sink each dune part-way so only its smooth crest shows → rolling look
+    dune.position.set(p[0], land.heightAt(p[0], p[1]) - (2.5 + rng() * 3), p[1] - land.zC);
     dune.rotation.y = rng() * Math.PI;
-    dune.scale.x = 1.3 + rng() * 0.6;
+    dune.scale.set(1.4 + rng() * 0.9, 0.26 + rng() * 0.12, 1 + rng() * 0.6);
     g.add(dune);
   }
 
-  // ---- a ring of big rocky MOUNTAINS on the far horizon, framing the oasis ----
-  const mountainCols = [0xc27a4a, 0xb5643c, 0xa86a4e, 0xc98a58];
-  for (let i = 0; i < 9; i++) {
-    const a = (i / 9) * Math.PI * 2 + rng() * 0.3;
-    const r = land.R * (1.15 + rng() * 0.4);
+  // ---- flat-topped rocky MESAS & buttes ring the oasis — layered sandstone ----
+  const rockCols = [0xcf9a5f, 0xc98a58, 0xd8a86a, 0xbb7d4c, 0xc78a52];
+  const strataCol = 0xa9713f; // darker ledge band between layers
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * Math.PI * 2 + rng() * 0.35;
+    const r = land.R * (1.05 + rng() * 0.5);
     const mx = Math.cos(a) * r, mz = Math.sin(a) * r;
-    const mtn = new THREE.Group();
-    const H = 16 + rng() * 20;         // tall peaks
-    const base = 7 + rng() * 7;
-    // stacked shrinking layers → a craggy mountain silhouette
+    const m = new THREE.Group();
+    const big = rng() > 0.45;
+    const base = big ? 11 + rng() * 9 : 5 + rng() * 4;
+    const H = big ? 13 + rng() * 13 : 5 + rng() * 6;
+    // 2-3 stacked WIDE layers that barely taper → a flat-topped mesa, not a cone,
+    // each capped with a thin darker strata band so it reads as sandstone
+    const layers = 2 + Math.floor(rng() * 2);
     let y = 0;
-    const layers = 3 + Math.floor(rng() * 2);
     for (let l = 0; l < layers; l++) {
-      const k = 1 - l / (layers + 0.4);
-      const hh = (H / layers) * (0.85 + rng() * 0.4);
-      const seg = 6 + Math.floor(rng() * 3);
-      const layer = cyl(base * k * 0.62, base * k, hh, mountainCols[(i + l) % mountainCols.length], seg);
+      const k = 1 - l * (0.14 + rng() * 0.08);
+      const hh = (H / layers) * (0.8 + rng() * 0.4);
+      const seg = 7 + Math.floor(rng() * 3);
+      const layer = cyl(base * k * 0.9, base * k, hh, rockCols[(i + l) % rockCols.length], seg);
+      // jitter the rim for a craggy, non-perfect silhouette
+      const pos = layer.geometry.attributes.position, v = new THREE.Vector3();
+      for (let vi = 0; vi < pos.count; vi++) { v.fromBufferAttribute(pos, vi); const j = 1 + (rng() - 0.5) * 0.16; pos.setXYZ(vi, v.x * j, v.y, v.z * j); }
+      layer.geometry.computeVertexNormals();
       layer.position.y = y + hh / 2;
       layer.rotation.y = rng() * Math.PI;
-      mtn.add(layer);
-      y += hh * 0.86;
+      m.add(layer);
+      const band = cyl(base * k * 0.93, base * k * 0.93, hh * 0.12, strataCol, seg);
+      band.position.y = y + hh * 0.42;
+      m.add(band);
+      y += hh * 0.92;
     }
-    // a rocky peak cap
-    const peak = cone(base * 0.34, H * 0.34, 0x9c5a38, 6);
-    peak.position.y = y + H * 0.12;
-    mtn.add(peak);
-    // sandy skirt at the base
-    const skirt = ball(base * 1.15, 0xd8ae68, 0.28, 9);
-    skirt.position.y = 0.2;
-    mtn.add(skirt);
-    mtn.position.set(mx, land.heightAt(mx, mz + land.zC) - 1, mz);
-    mtn.rotation.y = rng() * Math.PI;
-    g.add(mtn);
+    // a soft FLAT rock cap (deliberately not a spike)
+    const cap = cyl(base * 0.55, base * 0.7, H * 0.09, rockCols[i % rockCols.length], 8);
+    cap.position.y = y + H * 0.03;
+    m.add(cap);
+    // a low sandy skirt where the rock meets the dunes
+    const skirt = ball(base * 1.25, 0xe0b878, 0.22, 10);
+    skirt.position.y = 0.2; skirt.scale.set(1.15, 0.45, 1.15);
+    m.add(skirt);
+    m.position.set(mx, land.heightAt(mx, mz + land.zC) - 1, mz);
+    m.rotation.y = rng() * Math.PI;
+    g.add(m);
   }
 
   // instanced saguaros (trunk + cap) beyond the clear band
