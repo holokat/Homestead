@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { mat, mesh, box, cyl, cone, ball } from './assets.js';
+import { buildAnimalModel, animalModelReady } from './animal_models.js';
 
 export const ANIMAL_TYPES = ['bunny', 'chicken', 'duck', 'cat', 'dog', 'rooster', 'sheep', 'goat', 'pig', 'cow', 'horse'];
 
@@ -440,6 +441,12 @@ const BUILDERS = {
 };
 
 export function buildAnimal(type) {
+  // prefer the authored, procedurally-walked model; fall back to the primitive
+  // critter if the glTF hasn't finished loading yet
+  if (animalModelReady(type)) {
+    const m = buildAnimalModel(type);
+    if (m) return m;
+  }
   return (BUILDERS[type] || buildChickenLike.bind(null, false))();
 }
 
@@ -462,6 +469,24 @@ const QUIRK_MS = 700;
 
 // module-level scratch (never allocate per frame)
 const _d = { x: 0, z: 0 };
+
+// ---- authored-model (glTF) procedural walk: swing each leg from its hip ----
+const _swingAxis = new THREE.Vector3(0, 0, 1); // local axis the legs pivot about
+const _q = new THREE.Quaternion();
+const LEG_AMP = { // radians of fore-aft swing per species
+  bunny: 0.5, chicken: 0.55, duck: 0.5, cat: 0.5, dog: 0.6, rooster: 0.55,
+  sheep: 0.45, goat: 0.5, pig: 0.45, cow: 0.4, horse: 0.55,
+};
+function glbLegsSwing(parts, type, gait) {
+  const amp = LEG_AMP[type] || 0.5;
+  for (const leg of parts.legs) {
+    _q.setFromAxisAngle(_swingAxis, Math.sin(gait + leg.phase) * amp);
+    leg.node.quaternion.copy(leg.rest).multiply(_q);
+  }
+}
+function glbLegsRest(parts, ease) {
+  for (const leg of parts.legs) leg.node.quaternion.slerp(leg.rest, ease);
+}
 
 function pickIdle(s, now, rng) {
   s.mode = 'idle';
@@ -490,6 +515,7 @@ export function updateAnimal(rec, now) {
   const g = rec.group;
   const body = g.userData.body;
   const parts = g.userData.parts || {};
+  const isGLB = g.userData.glb;
 
   if (!s.init) {
     s.init = true;
@@ -518,20 +544,33 @@ export function updateAnimal(rec, now) {
       s.quirkEnd = now + QUIRK_MS;
       s.nextQuirk = now + 2500 + rec.rng() * 4500;
     }
+    if (isGLB) glbLegsRest(parts, ease); // settle the legs while standing
     if (now < s.quirkEnd) {
       const u = 1 - (s.quirkEnd - now) / QUIRK_MS; // 0..1 through the quirk
       const env = Math.sin(u * Math.PI); // smooth in-out envelope
-      if (GRAZERS[rec.type] && parts.head) {
-        // graze / peck: pitch the nose down (model faces +x, so -z rotation dips it)
-        parts.head.rotation.z = -(rec.type === 'chicken' || rec.type === 'rooster' ? 0.9 : 0.55) * env;
+      if (isGLB) {
+        // graze / peck: dip the head+neck forward-down (pitch about local x)
+        const dip = -(rec.type === 'chicken' || rec.type === 'rooster' || rec.type === 'duck' ? 0.7 : 0.5) * env;
+        if (parts.head) parts.head.rotation.x = dip;
+        if (parts.neck) parts.neck.rotation.x = dip * 0.5;
+        if (parts.tail) parts.tail.rotation.y = Math.sin(now * 0.02) * 0.35 * env; // idle tail flick
+      } else {
+        if (GRAZERS[rec.type] && parts.head) {
+          // graze / peck: pitch the nose down (model faces +x, so -z rotation dips it)
+          parts.head.rotation.z = -(rec.type === 'chicken' || rec.type === 'rooster' ? 0.9 : 0.55) * env;
+        }
+        if (TWITCHERS[rec.type]) {
+          if (parts.earL) parts.earL.rotation.z = s.earLBase + Math.sin(now * 0.06) * 0.3 * env;
+          if (parts.earR) parts.earR.rotation.z = s.earRBase - Math.sin(now * 0.06 + 1) * 0.3 * env;
+        }
+        if (rec.type === 'dog' && parts.tail) {
+          parts.tail.rotation.x = Math.sin(now * 0.025) * 0.6 * env;
+        }
       }
-      if (TWITCHERS[rec.type]) {
-        if (parts.earL) parts.earL.rotation.z = s.earLBase + Math.sin(now * 0.06) * 0.3 * env;
-        if (parts.earR) parts.earR.rotation.z = s.earRBase - Math.sin(now * 0.06 + 1) * 0.3 * env;
-      }
-      if (rec.type === 'dog' && parts.tail) {
-        parts.tail.rotation.x = Math.sin(now * 0.025) * 0.6 * env;
-      }
+    } else if (isGLB) {
+      if (parts.head) parts.head.rotation.x += (0 - parts.head.rotation.x) * ease;
+      if (parts.neck) parts.neck.rotation.x += (0 - parts.neck.rotation.x) * ease;
+      if (parts.tail) parts.tail.rotation.y += (0 - parts.tail.rotation.y) * ease;
     } else {
       if (parts.head) parts.head.rotation.z += (0 - parts.head.rotation.z) * ease;
       if (parts.earL) parts.earL.rotation.z += (s.earLBase - parts.earL.rotation.z) * ease;
@@ -572,7 +611,20 @@ export function updateAnimal(rec, now) {
   g.rotation.y += da * ease;
 
   // gait
-  if (rec.type === 'bunny') {
+  if (isGLB) {
+    // authored model: swing the legs from the hips + a light body bob & tail sway
+    const rate = rec.type === 'bunny' ? 9 : (4.5 + speed * 3);
+    s.gait += dt * rate;
+    glbLegsSwing(parts, rec.type, s.gait);
+    if (rec.type === 'bunny') {
+      s.hop += dt * 9;
+      body.position.y = Math.abs(Math.sin(s.hop)) * 0.24; // hops still arc
+    } else {
+      body.position.y = Math.abs(Math.sin(s.gait)) * 0.05;
+    }
+    if (parts.head) parts.head.rotation.x = Math.sin(s.gait) * 0.06; // gentle head bob
+    if (parts.tail) parts.tail.rotation.y = Math.sin(s.gait * 0.6) * 0.18; // tail sway
+  } else if (rec.type === 'bunny') {
     s.hop += dt * 9; // hop in arcs
     body.position.y = Math.abs(Math.sin(s.hop)) * 0.28;
   } else if (STRUTTERS[rec.type]) {

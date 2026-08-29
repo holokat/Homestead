@@ -11,6 +11,7 @@ import { FARMHOUSE_THRESHOLDS, FARMHOUSE_NAMES, FARMHOUSE_PRICES } from './build
 import { FISH_TABLES } from './fishing.js';
 import { getThumb } from './thumbs.js';
 import { preloadModels, glbReady } from './glb_models.js';
+import { preloadAnimalModels, animalModelReady } from './animal_models.js';
 import { MISSIONS, MISSION_PHASES, missionProgress } from './missions.js';
 import { generatePrivateKey, getPublicKey, finishEvent, bech32Encode } from './nostr-keys.js';
 import { PROCESSORS, RECIPES, PRODUCTS, MERCHANT_ITEMS, recipesFor } from './recipes.js';
@@ -3622,4 +3623,10 @@ loadFarm(startKey);
 // the scene a single time so they swap in over the procedural first paint
 preloadModels().then(() => {
   if (farm && !builtWithGLBDeer && glbReady('deer')) buildFarmScene();
+});
+// authored farm-animal models also stream in — rebuild once so placed animals
+// swap from the primitive fallbacks to the walking glTF models
+let builtWithGLBAnimals = animalModelReady('cow');
+preloadAnimalModels().then(() => {
+  if (farm && !builtWithGLBAnimals && animalModelReady('cow')) { builtWithGLBAnimals = true; buildFarmScene(); }
 });
