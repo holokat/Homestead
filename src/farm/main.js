@@ -3,7 +3,7 @@ import { Homestead } from './farm.js';
 import { Game, WATER_COOLDOWN_MS } from './game.js';
 import {
   CROPS, TREES, OBJECTS, ANIMALS, BUILDINGS, RESOURCES, GOODS,
-  reqProgress, reqLabel, findItem,
+  reqProgress, reqLabel, findItem, placementZone, PLACE_TIPS,
 } from './catalog.js';
 import { THEMES, getTheme } from './themes.js';
 import { FarmAudio } from './audio.js';
@@ -999,7 +999,6 @@ function buildFarmScene() {
     onDockClick: tryFish,
     onFishResult: handleFishResult,
     onDeerResult: handleHuntResult,
-    onBowState: handleBowState,
     onProductReady: handleProductReady,
     onConstructionKnock: () => audio.playSfx('construction-hammer-under-way', 0.4),
     onHouseClick: handleHouseClick,
@@ -1417,7 +1416,6 @@ function equipBow(id) {
   activeTool = 'select';
   mode = null;
   if (farm) { farm.cancelFishing(); farm.setHuntMode(true, bowTier(id)); }
-  showBowViewmodel(id);
   setModeBanner(`🏹 ${bowInfo(id)?.name || 'bow'} ready — aim at a deer and click · get closer for a surer shot · Esc to put it away`);
   renderHud();
 }
@@ -1426,32 +1424,13 @@ function unequipBow() {
   if (!equippedBow) return;
   equippedBow = null;
   if (farm) farm.setHuntMode(false);
-  hideBowViewmodel();
   setModeBanner(null);
   renderHud();
 }
 
-// ---- first-person bow "viewmodel": the painted bow artwork held at the bottom,
-// arrow aimed toward the center of the view; it nocks/draws then looses on a shot
-function showBowViewmodel(id) {
-  let el = document.getElementById('bow-viewmodel');
-  if (!el) { el = document.createElement('div'); el.id = 'bow-viewmodel'; document.body.appendChild(el); }
-  const bow = bowInfo(id) || BOWS[0];
-  const img = bow.img || '/ui/bow-hunting.png';
-  el.innerHTML = `<div class="bvm-wrap"><img class="bvm-bow" src="${img}" alt=""></div>`;
-  el.classList.remove('hidden');
-}
-function hideBowViewmodel() { const el = document.getElementById('bow-viewmodel'); if (el) el.classList.add('hidden'); }
-// bow states from the engine: 'draw' pulls the bow back (~0.5s), 'release' looses
-function handleBowState(state) {
-  const w = document.querySelector('#bow-viewmodel .bvm-wrap');
-  if (!w) return;
-  if (state === 'draw') { w.classList.remove('released'); w.classList.add('drawing'); }
-  else if (state === 'release') {
-    w.classList.remove('drawing'); w.classList.add('released');
-    clearTimeout(w._t); w._t = setTimeout(() => w.classList.remove('released'), 420);
-  }
-}
+// (the first-person bow is now a real 3D model attached to the camera — see
+// setHuntMode / _updateBowVM in farm.js. The painted artwork is used only for the
+// inventory & Craft purchase slots.)
 
 // coin display counts up/down instead of snapping
 let shownCoins = null;
@@ -2684,7 +2663,8 @@ function handlePlotClick(index) {
 function beginPlacement(kind, type, opts, existingUid = null) {
   if (equippedBow) unequipBow(); // can't place and hunt at once
   const item = findAnyItem(kind, type);
-  setModeBanner(`placing ${item.icon} ${item.name} — click to drop · R rotate · Esc cancel${existingUid ? ' · ⌫ remove' : ''}`);
+  const zoneTip = PLACE_TIPS[placementZone(type)];
+  setModeBanner(`placing ${item.icon} ${item.name} — click to drop · R rotate · Esc cancel${existingUid ? ' · ⌫ remove' : ''}${zoneTip ? ` · ${zoneTip}` : ''}`);
   mode = { kind: 'placing' };
   const keepRot = movingEntry && movingEntry.uid === existingUid ? movingEntry.rot || 0 : 0;
   farm.startPlacement(kind, type, opts, (pos) => {
@@ -3234,6 +3214,8 @@ function hudTipHtml(cell) {
       rows.push(...purposeRows(item, false));
       if (item.desc) rows.push(esc(item.desc));
     }
+    const zoneTip = PLACE_TIPS[placementZone(item.id)];
+    if (zoneTip) rows.push(`📍 ${esc(zoneTip)}`);
     const hasReq = item.req && Object.keys(item.req).length > 0;
     const status = isUn
       ? ''

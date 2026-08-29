@@ -269,22 +269,27 @@ function bLogistics(g, S, rng, T) {
 function bEnergy(g, S, rng, T, asset) {
   const name = asset.name || asset.id || '';
   if (/wind|turbine/i.test(name)) {
-    const mh = v(rng, S * 0.95);
-    const mast = cyl(S * 0.035, S * 0.06, mh, 0xe8e8ea, 8);
+    // real wind turbines tower over houses & the windmill (~15.6u) — build tall,
+    // at an absolute height rather than the small placeholder size
+    const mh = 24;
+    const mast = cyl(0.34, 0.62, mh, 0xe8e8ea, 8);
     mast.position.y = mh / 2;
     g.add(mast);
-    const hub = ball(S * 0.06, 0xd0d0d4, 1, 6);
-    hub.position.set(0, mh, S * 0.06);
+    const nacelle = box(1.5, 0.9, 0.9, 0xdedee2);
+    nacelle.position.set(0, mh, 0.1);
+    g.add(nacelle);
+    const hub = ball(0.5, 0xd0d0d4, 1, 6);
+    hub.position.set(0, mh, 0.72);
     g.add(hub);
     const blades = new THREE.Group();
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2;
-      const blade = box(S * 0.05, S * 0.42, 0.04, 0xf2f2f4);
-      blade.position.set(-Math.sin(a) * S * 0.21, Math.cos(a) * S * 0.21, 0);
+      const blade = box(0.55, 10.5, 0.16, 0xf2f2f4);
+      blade.position.set(-Math.sin(a) * 5.2, Math.cos(a) * 5.2, 0);
       blade.rotation.z = a;
       blades.add(blade);
     }
-    blades.position.set(0, mh, S * 0.09);
+    blades.position.set(0, mh, 0.95);
     g.add(blades);
     g.userData.spin = blades;
   } else if (/solar|panel|photo/i.test(name)) {

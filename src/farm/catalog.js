@@ -109,6 +109,33 @@ export const GOODS = {
   trapped_fish: { name: 'Trapped Fish', icon: '🐟', sell: 7 }, // passive catch from a fish trap
 };
 
+// ---- placement zones ------------------------------------------------------
+// Where a thing may be dropped. Default is 'farm' (inside the fenced homestead).
+//   water — must sit in open water (lake): traps, nets, crab pots, piers
+//   tree  — must be next to a tree: sap/resin collectors that tap the trunks
+//   open  — anywhere in the valley, inside the farm OR out in the wild: the big
+//           landscape power pieces (turbines, solar arrays, power lines)
+const PLACE_WATER = new Set([
+  'fish_trap', 'aqua_fish_trap', 'aqua_net_station', 'aqua_crab_pots',
+  'aqua_oyster_beds', 'aqua_seaweed_farm', 'aqua_fishing_pier',
+]);
+const PLACE_TREE = new Set(['for_sap_collector', 'for_resin_collector']);
+const PLACE_OPEN = new Set(['enr_windturbine', 'enr_solar', 'enr_powerlines']);
+
+export function placementZone(id) {
+  if (PLACE_WATER.has(id)) return 'water';
+  if (PLACE_TREE.has(id)) return 'tree';
+  if (PLACE_OPEN.has(id)) return 'open';
+  return 'farm';
+}
+// short hint shown on the item + while placing
+export const PLACE_TIPS = {
+  water: 'Must be placed in water 🌊',
+  tree: 'Must be placed next to a tree 🌳',
+  open: 'Can be placed anywhere in the valley 🏞️',
+  farm: '',
+};
+
 // enough to make two or three meaningful first purchases (a producing animal
 // plus a pen, say) so a brand-new player has agency before the first harvest
 export const STARTER_COINS = 120;

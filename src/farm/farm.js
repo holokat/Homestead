@@ -20,14 +20,14 @@ import { buildMeat } from './meat_models.js';
 import { buildCritter } from './critter_models.js';
 import { buildCamp } from './camp_models.js';
 import { buildFishTrap } from './fishtrap_models.js';
+import { buildBowViewmodel } from './bow_viewmodel.js';
 import { buildGLB, glbReady } from './glb_models.js';
 
 // campsite decor ids (catalog) → camp_models builder ids
 const CAMP_IDS = new Set(['campfire', 'tent', 'camp_chair', 'camp_lantern']);
-// items that must be placed IN water (a lake/stream), and may sit outside the farm
-const WATER_ITEMS = new Set(['fish_trap']);
-// the authored deer GLB stands ~4.5u tall in its own units; bring it to farm scale
+// the authored GLB animals stand ~4.5u tall in their own units; bring to farm scale
 const GLB_DEER_SCALE = 0.5;
+const GLB_BEAR_SCALE = 0.74; // a bear reads bigger than a deer
 
 // Huntable quarry. `minTier` is the bow tier needed to actually down it — a bear
 // shrugs off a tier-1 bow and charges the farm instead. `hitR` is the click
@@ -44,7 +44,7 @@ import { buildProcessor, buildMerchantItem, PROCESSOR_RADIUS } from './processor
 import { buildPlaceholder, placeholderRadius, buildConstructionSite } from './placeholder.js';
 import { INFRA_MODELS } from './infra_models.js';
 import { INFRA_BY_ID } from './infrastructure.js';
-import { findItem, GOODS } from './catalog.js';
+import { findItem, GOODS, placementZone } from './catalog.js';
 
 const PROC_IDS = ['mill', 'bakery', 'creamery', 'cheese_house', 'preserve_kitchen', 'smokehouse', 'juicery', 'farm_kitchen'];
 const MERCH_IDS = ['gnome', 'fountain', 'flamingo', 'topiary', 'gazebo', 'flagpole'];
@@ -1108,6 +1108,34 @@ export class Homestead {
     if (!on) { this.hoveredDeer = null; this.drawing = null; }
     if (this.controls && on) this.controls.autoRotate = false;
     this.renderer.domElement.style.cursor = on ? 'crosshair' : 'grab';
+    // the first-person bow is a real 3D model parented to the camera
+    if (this.bowVM) { this.camera.remove(this.bowVM); this.bowVM = null; }
+    if (on) {
+      if (this.camera.parent !== this.scene) this.scene.add(this.camera); // so camera children render
+      const vm = buildBowViewmodel(tier);
+      vm.scale.setScalar(0.7);
+      vm.position.set(0.42, -0.5, -1.5); // camera space: to the right, low, forward
+      vm.rotation.set(0.04, -0.22, 0.1);
+      this.camera.add(vm);
+      this.bowVM = vm;
+      this._bowRestZ = vm.userData.arrow ? vm.userData.arrow.position.z : 0;
+      this._bowFired = 0;
+    }
+  }
+
+  _updateBowVM(now) {
+    if (!this.bowVM || !this.bowVM.userData.arrow) return;
+    const arrow = this.bowVM.userData.arrow;
+    if (this.drawing) {
+      const p = Math.min(1, (now - this.drawing.at) / this.drawing.dur);
+      arrow.visible = true;
+      arrow.position.z = this._bowRestZ + p * 0.4; // +Z = pulled back toward the archer
+    } else if (this._bowFired && now - this._bowFired < 240) {
+      arrow.visible = false; // the arrow has just left the bow
+    } else {
+      arrow.visible = true;
+      arrow.position.z += (this._bowRestZ - arrow.position.z) * 0.4; // spring back to rest
+    }
   }
 
   _deerDryPoint() {
@@ -1140,6 +1168,7 @@ export class Homestead {
     if (now - this.drawing.at >= this.drawing.dur) {
       const deer = this.drawing.target;
       this.drawing = null;
+      this._bowFired = now; // the 3D viewmodel arrow flies off briefly
       try { this.onBowState && this.onBowState('release'); } catch {}
       // target may have wandered out of range/died during the draw — re-validate
       if (deer && deer.userData.roam && deer.visible
@@ -1676,7 +1705,12 @@ export class Homestead {
       }
       for (let i = 0; i < 5; i++) addQuarry(buildCritter('bunny'), 'bunny', null, 1.5);
       for (let i = 0; i < 4; i++) addQuarry(buildCritter('squirrel'), 'squirrel', null, 1.5);
-      addQuarry(buildCritter('bear'), 'bear', null, 1.3);
+      if (glbReady('bear')) {
+        const gb = buildGLB('bear');
+        addQuarry(gb.group, 'bear', null, GLB_BEAR_SCALE, { mixer: gb.mixer, actions: gb.actions });
+      } else {
+        addQuarry(buildCritter('bear'), 'bear', null, 1.3);
+      }
     }
 
     // a POD of dolphins cruising the open water together — mostly submerged,
@@ -1929,7 +1963,7 @@ export class Homestead {
     const radius = this._radiusOf(type);
     const group = constructing ? buildConstructionSite(radius) : this._buildPlaceable(kind, type, opts);
     // water items float at the water surface; everything else sits on the ground
-    const baseY = WATER_ITEMS.has(type) ? (this.dockWaterY ?? 0) + 0.05 : this._groundY();
+    const baseY = placementZone(type) === 'water' ? (this.dockWaterY ?? 0) + 0.05 : this._groundY();
     group.position.set(x, baseY, z);
     group.rotation.y = rot;
     this.scene.add(group);
@@ -2046,19 +2080,52 @@ export class Homestead {
     if (this.placement) this.placement.rot += Math.PI / 4;
   }
 
+  _inWater(x, z, r = 0) {
+    const wz = this.deerWaterZone;
+    if (!wz) return false;
+    return Math.hypot(x - wz.x, z - wz.z) < (wz.waterR || wz.r) - r;
+  }
+
+  _noOverlap(x, z, r) {
+    for (const rec of this.placed.values()) {
+      if (Math.hypot(x - rec.x, z - rec.z) < (r + this._radiusOf(rec.type)) * 0.8) return false;
+    }
+    return true;
+  }
+
   _placementValid(x, z) {
     const r = this.placement.radius;
-    // water items (fish trap) must sit in open water and may live OUTSIDE the farm
-    if (WATER_ITEMS.has(this.placement.type)) {
+    const zone = placementZone(this.placement.type);
+    // water items (traps, nets, piers) must sit in open water, outside the farm
+    if (zone === 'water') {
       const wz = this.deerWaterZone;
       if (!wz) return false;
       const waterR = wz.waterR || wz.r;
-      if (Math.hypot(x - wz.x, z - wz.z) > waterR - r - 0.5) return false; // fully in the water
-      if (this.dockPos && Math.hypot(x - this.dockPos.x, z - this.dockPos.z) < r + 5) return false; // clear of the dock
+      if (Math.hypot(x - wz.x, z - wz.z) > waterR - r - 0.5) return false;
+      if (this.dockPos && Math.hypot(x - this.dockPos.x, z - this.dockPos.z) < r + 5) return false;
+      return this._noOverlap(x, z, r);
+    }
+    // tree items (sap/resin collectors) must be next to a planted tree, on land
+    if (zone === 'tree') {
+      if (this._inWater(x, z, r)) return false;
+      let byTree = false;
       for (const rec of this.placed.values()) {
-        if (Math.hypot(x - rec.x, z - rec.z) < (r + this._radiusOf(rec.type)) * 0.8) return false;
+        const d = Math.hypot(x - rec.x, z - rec.z);
+        if (rec.kind === 'tree' && d < this._radiusOf(rec.type) + r + 2.5) byTree = true;
+        else if (d < (r + this._radiusOf(rec.type)) * 0.8) return false;
       }
-      return true;
+      return byTree;
+    }
+    // open items (turbines, solar, power lines) may go ANYWHERE on dry land in the
+    // valley — inside the farm or out in the wild — just not in water or clipping
+    if (zone === 'open') {
+      const zc = (this.zFront + this.zBack) / 2;
+      if (Math.hypot(x, z - zc) > this.W * 0.5 + 95) return false; // stay within the valley
+      if (this._inWater(x, z, r)) return false;
+      if (Math.abs(x) < this.gridHalfX + r + 0.6 && Math.abs(z) < this.gridHalfZ + r + 0.6) return false; // not on the plots
+      if (Math.hypot(x - this.windmillPos.x, z - this.windmillPos.z) < r + 4.5) return false;
+      if (this.farmhousePos && Math.hypot(x - this.farmhousePos.x, z - this.farmhousePos.z) < r + 8.5) return false;
+      return this._noOverlap(x, z, r);
     }
     const f = this.fence;
     if (Math.abs(x) > f.x - r - 0.5) return false;
@@ -2089,7 +2156,7 @@ export class Homestead {
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     if (!this.raycaster.ray.intersectPlane(plane, hitPos)) { pl.ghost.visible = false; return; }
     pl.ghost.visible = true;
-    const ghostY = WATER_ITEMS.has(pl.type) ? (this.dockWaterY ?? 0) + 0.05 : 0;
+    const ghostY = placementZone(pl.type) === 'water' ? (this.dockWaterY ?? 0) + 0.05 : 0;
     pl.ghost.position.set(hitPos.x, ghostY, hitPos.z);
     pl.ghost.rotation.y = pl.rot;
     pl.valid = this._placementValid(hitPos.x, hitPos.z);
@@ -2506,10 +2573,12 @@ export class Homestead {
         // authored GLB animals animate via their clips; drive them by state
         if (rm.mixer) {
           rm.mixer.update(ddt);
+          const walkClip = rm.actions.DeerWalk ? 'DeerWalk' : rm.actions.BearWalk ? 'BearWalk' : null;
+          const idleClip = rm.actions.DeerIdle ? 'DeerIdle' : rm.actions.BearIdle ? 'BearIdle' : null;
           const st = rm.state;
-          if (st === 'walk') this._playClip(rm, 'DeerWalk', 1);
-          else if (st === 'flee') this._playClip(rm, 'DeerWalk', 3.0);
-          else if (st === 'graze') this._playClip(rm, 'DeerIdle', 1);
+          if (st === 'walk' && walkClip) this._playClip(rm, walkClip, 1);
+          else if ((st === 'flee' || st === 'rage') && walkClip) this._playClip(rm, walkClip, st === 'flee' ? 2.3 : 1.6);
+          else if (st === 'graze' && idleClip) this._playClip(rm, idleClip, 1);
           else if ((st === 'dead' || st === 'respawning') && rm.clip) {
             if (rm.actions[rm.clip]) rm.actions[rm.clip].fadeOut(0.3);
             rm.clip = null;
@@ -2653,6 +2722,7 @@ export class Homestead {
       }
     }
     this._updateDraw(now);
+    this._updateBowVM(now);
     this._updateArrows(now);
     this._updateBlood(now);
     // dolphins lap the island out on the water and periodically breach in a

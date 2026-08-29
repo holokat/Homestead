@@ -8,6 +8,7 @@ import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 
 const SOURCES = {
   deer: '/models/low-poly-deer.glb',
+  bear: '/models/low-poly-bear.glb',
 };
 
 const loader = new GLTFLoader();
