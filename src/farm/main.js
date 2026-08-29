@@ -470,14 +470,11 @@ const missionToastShown = new Set(); // completion pings, once per session
 // missions before it are claimed — so finishing one thing never dumps a stack of
 // unrelated rewards, and progress reads in the intended teaching order.
 const missionDone = (m) => missionProgress(m, game) >= m.target;
+// every completed-but-unclaimed mission is a reward you can collect — a skipped
+// earlier goal never locks the ones you've genuinely finished. (Kept in MISSIONS
+// order so the panel reads top-to-bottom.)
 function claimableMissions() {
-  const out = [];
-  for (const m of MISSIONS) {
-    if (game.missionsClaimed.includes(m.id)) continue;
-    if (missionDone(m)) out.push(m);
-    else break; // first unmet unclaimed mission blocks everything after it
-  }
-  return out;
+  return MISSIONS.filter((m) => !game.missionsClaimed.includes(m.id) && missionDone(m));
 }
 const activeMissions = () => {
   const claim = claimableMissions();
@@ -515,8 +512,9 @@ function renderMissions() {
   const panel = $('#missions-panel');
   panel.classList.toggle('hidden', claimable.length === 0);
   if (claimable.length === 0) return;
-  // claimable rewards on top, then a peek at the next couple of goals
-  const shown = [...claimable, ...inProgress.slice(0, 2)];
+  // claimable rewards on top (capped so a big backlog doesn't fill the screen —
+  // the mission book lists them all), then a peek at the next couple of goals
+  const shown = [...claimable.slice(0, 6), ...inProgress.slice(0, 2)];
   $('#missions-list').innerHTML = shown.map((m) => {
     const p = missionProgress(m, game);
     const done = claimIds.has(m.id); // only the in-order completed run is claimable
@@ -535,9 +533,10 @@ function renderMissions() {
 
 function claimMission(id) {
   const m = MISSIONS.find((x) => x.id === id);
+  // any completed, unclaimed mission may be collected — the book shows a claim
+  // button for each, so clicking one must always pay out (a skipped earlier
+  // mission no longer locks the rewards you've genuinely earned)
   if (!m || game.missionsClaimed.includes(m.id) || missionProgress(m, game) < m.target) return;
-  // only the in-order completed run may be claimed — no jumping ahead in the chain
-  if (!claimableMissions().some((x) => x.id === id)) return;
   game.missionsClaimed.push(m.id);
   game.addCoins(m.reward);
   game.save();
