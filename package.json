@@ -1,0 +1,20 @@
+{
+  "name": "nostrux-homestead",
+  "version": "1.0.0",
+  "description": "A nostr-connected 3D low-poly farming game where your social engagement grows the farm.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": ["nostr", "game", "farming", "threejs", "three", "webgl"],
+  "author": "karnagebitcoin",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "three": "^0.185.1",
+    "vite": "^8.2.2"
+  }
+}
