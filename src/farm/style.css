@@ -779,12 +779,19 @@ body.book-open #sidebar { transform: translateX(0); }
   position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
   background: var(--panel); border: 1px solid var(--accent);
   color: var(--text);
-  border-radius: 999px; padding: 8px 18px;
-  font-size: 12px; z-index: 6;
+  border-radius: 999px; padding: 6px 8px 6px 18px;
+  font-size: 12px; z-index: 16;
   box-shadow: 0 3px 14px rgba(80, 50, 20, 0.18);
-  white-space: nowrap;
+  white-space: nowrap; cursor: pointer;
+  display: flex; align-items: center; gap: 10px;
 }
 #mode-banner.hidden { display: none; }
+#mode-banner .mb-cancel {
+  flex: none; border: 0; cursor: pointer; border-radius: 999px;
+  padding: 4px 12px; font-size: 11px; font-weight: 800;
+  background: rgba(196, 60, 45, 0.92); color: #fff;
+}
+#mode-banner .mb-cancel:hover { background: rgba(214, 70, 55, 1); }
 
 /* ================= tooltip ================= */
 
@@ -1262,7 +1269,7 @@ body.book-open #sidebar { transform: translateX(0); }
 
 /* ---- perimeter fence health indicator ---- */
 #fence-hud {
-  position: fixed; top: 56px; left: 50%; transform: translateX(-50%); z-index: 15;
+  position: fixed; top: 98px; left: 50%; transform: translateX(-50%); z-index: 15;
   padding: 6px 15px; border-radius: 999px; cursor: pointer; white-space: nowrap;
   background: rgba(120, 88, 45, 0.92); color: #f6e7bf; font-size: 13px; font-weight: 800;
   box-shadow: 0 3px 9px rgba(40, 25, 8, 0.4); border: 1px solid rgba(0, 0, 0, 0.18);

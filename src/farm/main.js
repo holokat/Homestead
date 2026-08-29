@@ -2628,10 +2628,28 @@ function setMode(m) {
 
 function setModeBanner(text) {
   const el = $('#mode-banner');
-  if (!text) { el.classList.add('hidden'); return; }
-  el.textContent = text;
+  if (!text) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  el.innerHTML = '';
+  const span = document.createElement('span');
+  span.textContent = text;
+  el.appendChild(span);
+  const btn = document.createElement('button');
+  btn.className = 'mb-cancel'; btn.type = 'button'; btn.textContent = '✕ cancel';
+  el.appendChild(btn);
   el.classList.remove('hidden');
 }
+
+// cancel whatever mode is active — the bow, placement, paving, fishing, planting
+function cancelActiveMode() {
+  if (equippedBow) { unequipBow(); return; }
+  if (farm?.placement) { farm.cancelPlacement(); mode = null; movingEntry = null; setModeBanner(null); renderHud(); return; }
+  if (farm?.paving) { farm.cancelPaving(); hidePathCost(); setModeBanner(null); return; }
+  if (farm?.fishing) { farm.cancelFishing(); setModeBanner(null); return; }
+  if (mode) setMode(null);
+  if (activeTool !== 'select') setTool('select');
+}
+// the banner is clickable to cancel (as well as Esc)
+$('#mode-banner').addEventListener('click', cancelActiveMode);
 
 function showActionPopAt(x, y, actions) {
   const el = $('#action-pop');
