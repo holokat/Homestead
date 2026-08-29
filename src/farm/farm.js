@@ -257,7 +257,9 @@ export class Homestead {
     this.controls.dampingFactor = 0.07;
     this.controls.minDistance = 20;
     this.controls.maxDistance = s * 3.4;
-    this.controls.maxPolarAngle = Math.PI / 2.14; // never look up from under the ground
+    // keep the lowest view tilted enough DOWN that flat water planes (the desert
+    // moat, lakes) read as rings, not big edge-on slabs grazing across the screen
+    this.controls.maxPolarAngle = Math.PI / 2.3;
     this.controls.autoRotate = true;
     this.controls.autoRotateSpeed = 0.3;
     this.controls.addEventListener('start', () => {
@@ -3377,6 +3379,10 @@ export class Homestead {
         this.camera.position.x += shiftX;
         this.camera.position.z += shiftZ;
       }
+      // keep the look-at target near ground level so panning can't tilt the view
+      // up into a flat, grazing line across the water/land
+      if (this.controls.target.y < 0) this.controls.target.y = 0;
+      else if (this.controls.target.y > 18) this.controls.target.y = 18;
     }
     // hard floor for the camera — the underside of the world stays private
     if (this.camera.position.y < 3.5) this.camera.position.y = 3.5;
