@@ -2226,6 +2226,46 @@ function desertOuter(ctx) {
   ripple.position.y = 0.31;
   g.add(ripple);
 
+  // ===== OASIS LAGOON: open water off the west shore, so the pier fishes a real
+  // lake instead of the desert. It overlaps the moat so the two read as one body. =====
+  const lakeR = 26;
+  const lake = { x: -(innerHW + moatW + lakeR * 0.75), z: 0, r: lakeR };
+  {
+    const disc = (r, color, y, opts, seg = 34) => {
+      const m = new THREE.Mesh(new THREE.CircleGeometry(r, seg), mat(color, { side: THREE.DoubleSide, ...(opts || {}) }));
+      m.rotation.x = -Math.PI / 2; m.position.set(lake.x, y, lake.z); g.add(m); return m;
+    };
+    disc(lakeR + 5, 0xe6c58a, 0.10);                                     // sandy beach
+    disc(lakeR + 1.4, 0xbfeae0, 0.20);                                   // pale shallows
+    disc(lakeR, 0x2fc4c2, 0.26, { roughness: 0.3 });                     // turquoise water
+    disc(lakeR, 0xffffff, 0.30, { map: waterTexture(), transparent: true, opacity: 0.4, roughness: 0.16, depthWrite: false }); // ripple
+    // a fringe of palms, reeds and rocks around the shore
+    for (let i = 0; i < 18; i++) {
+      const a = rng() * Math.PI * 2, rr = lakeR + 1.5 + rng() * 4;
+      const rx = lake.x + Math.cos(a) * rr, rz = lake.z + Math.sin(a) * rr;
+      if (rx > -innerHW) continue; // keep clear of the farm side
+      const gy = land.heightAt(rx, rz + land.zC);
+      if (rng() > 0.45) {
+        const p = buildPalm(rng, null);
+        p.position.set(rx, gy, rz); p.rotation.y = rng() * Math.PI * 2; p.scale.setScalar(0.7 + rng() * 0.5); g.add(p);
+      } else {
+        const rk = ball(0.5 + rng() * 0.9, 0xb08a5e, 0.7, 6); rk.position.set(rx, gy + 0.1, rz); g.add(rk);
+      }
+    }
+    // lily pads dotting the lake
+    for (let i = 0; i < 10; i++) {
+      const a = rng() * Math.PI * 2, rr = rng() * (lakeR - 3);
+      const pad = flatDisc(0.5 + rng() * 0.5, rng() > 0.5 ? 0x3f9e4e : 0x4fae5a, 0.33, 7);
+      pad.position.set(lake.x + Math.cos(a) * rr, 0.33, lake.z + Math.sin(a) * rr);
+      pad.rotation.z = rng() * Math.PI; g.add(pad);
+    }
+    // relocate the fishing pier to the lake's east shore, reaching over open water
+    if (typeof ctx.setDockSpot === 'function') {
+      ctx.setDockSpot(lake.x + lakeR * 0.72, land.zC + lake.z, Math.PI, land.topY + 0.28);
+    }
+  }
+  const inLake = (wx, wz) => Math.hypot(wx - lake.x, (wz - land.zC) - lake.z) < lake.r + 4;
+
   // ---- dense palms clustered along the OUTER bank ----
   const outerPath = roundedRectShape(innerHW + moatW, innerHD + moatW, innerR + moatW);
   const bankPts = outerPath.getSpacedPoints(48);
@@ -2329,7 +2369,7 @@ function desertOuter(ctx) {
   const duneCols = [0xead0a0, 0xe6c184, 0xdcb576, 0xd8ae68, 0xe3c088];
   for (let i = 0; i < 46; i++) {
     const p = outerPoint(ctx, rng, land.R, clear + 6);
-    if (!p) continue;
+    if (!p || inLake(p[0], p[1])) continue;
     const rad = 10 + rng() * 16;
     const dune = ball(rad, duneCols[i % duneCols.length], 0.16, 12);
     dune.rotation.y = rng() * Math.PI;
@@ -2396,13 +2436,14 @@ function desertOuter(ctx) {
   // a few smaller buttes scattered on the dune field for depth
   for (let i = 0; i < 5; i++) {
     const p = outerPoint(ctx, rng, land.R * 0.72, clear + 24);
-    if (!p) continue;
+    if (!p || inLake(p[0], p[1])) continue;
     place(buildMesa(5 + rng() * 4, 6 + rng() * 7, 2), p[0], p[1] - land.zC);
   }
 
   // instanced saguaros (trunk + cap) beyond the clear band
   const sagTrunk = [], sagCap = [];
   for (const [x, z] of outerPoints(ctx, rng, land.R, clear + 3, 22)) {
+    if (inLake(x, z)) continue;
     const s = 0.8 + rng() * 0.6;
     const h = land.heightAt(x, z);
     const lz = z - land.zC;
@@ -2416,7 +2457,7 @@ function desertOuter(ctx) {
   // a few hero saguaros with arms
   for (let i = 0; i < 3; i++) {
     const p = outerPoint(ctx, rng, land.R, clear + 4);
-    if (!p) continue;
+    if (!p || inLake(p[0], p[1])) continue;
     const c = new THREE.Group();
     const h = 3.6 + rng();
     const trunk = cyl(0.32, 0.4, h, 0x3e7d46, 8);
@@ -2439,7 +2480,7 @@ function desertOuter(ctx) {
   }
 
   // barrel cacti
-  const barrels = outerPoints(ctx, rng, land.R, clear + 2, 16).map(([x, z]) => ({
+  const barrels = outerPoints(ctx, rng, land.R, clear + 2, 16).filter(([x, z]) => !inLake(x, z)).map(([x, z]) => ({
     x, y: land.heightAt(x, z) + 0.35, z: z - land.zC, s: 0.7 + rng() * 0.6, sy: 0.8, ry: rng() * Math.PI,
   }));
   outerInstanced(g, new THREE.SphereGeometry(0.55, 8, 7), mat(0x4e8c4a), barrels);
@@ -2471,7 +2512,7 @@ function desertOuter(ctx) {
   // sun-bleached bones
   for (let i = 0; i < 2; i++) {
     const p = outerPoint(ctx, rng, land.R, clear + 2);
-    if (!p) continue;
+    if (!p || inLake(p[0], p[1])) continue;
     const s = new THREE.Group();
     const skull = ball(0.4, 0xf2ede0, 0.7, 7);
     skull.position.y = 0.25;

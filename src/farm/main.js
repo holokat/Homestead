@@ -2475,7 +2475,9 @@ function handleFishResult(fish) {
 function updateFenceHud(hp, state) {
   if (hp == null) hp = game.fenceHP;
   let el = document.getElementById('fence-hud');
-  if (hp >= 100) { if (el) el.classList.add('hidden'); return; }
+  // only nag once the fence is genuinely worn — matches the 50/25/10 warnings,
+  // so a near-full fence never shows a persistent "mend" badge
+  if (hp > 50) { if (el) el.classList.add('hidden'); return; }
   if (!el) {
     el = document.createElement('div'); el.id = 'fence-hud';
     el.addEventListener('click', repairFenceUI);
