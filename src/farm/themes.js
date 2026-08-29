@@ -2198,7 +2198,7 @@ function ringBand(innerHalfW, innerHalfD, innerR, band, color, opts) {
 
 function desertOuter(ctx) {
   const rng = outerRng(ctx);
-  const land = outerLandmass(ctx, { color: 0xddb372, under: 0x8a5638, amp: 2.5 });
+  const land = outerLandmass(ctx, { color: 0xddb372, under: 0x8a5638, amp: 2.5, radiusK: 1.95 });
   if (!land) return;
   const g = land.group;
   const clear = ctx.clearRadius || 10;
@@ -2327,60 +2327,77 @@ function desertOuter(ctx) {
 
   // rolling sand dunes — big, smooth, low swells filling the desert floor
   const duneCols = [0xead0a0, 0xe6c184, 0xdcb576, 0xd8ae68, 0xe3c088];
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 46; i++) {
     const p = outerPoint(ctx, rng, land.R, clear + 6);
     if (!p) continue;
-    const dune = ball(9 + rng() * 13, duneCols[i % duneCols.length], 0.16, 12);
-    // sink each dune part-way so only its smooth crest shows → rolling look
-    dune.position.set(p[0], land.heightAt(p[0], p[1]) - (2.5 + rng() * 3), p[1] - land.zC);
+    const rad = 10 + rng() * 16;
+    const dune = ball(rad, duneCols[i % duneCols.length], 0.16, 12);
     dune.rotation.y = rng() * Math.PI;
-    dune.scale.set(1.4 + rng() * 0.9, 0.26 + rng() * 0.12, 1 + rng() * 0.6);
+    const sy = 0.26 + rng() * 0.12;
+    dune.scale.set(1.4 + rng() * 0.9, sy, 1 + rng() * 0.6);
+    // sink so ~half the crest shows → rolling swell, never fully buried
+    dune.position.set(p[0], land.heightAt(p[0], p[1]) - rad * 0.16 * sy * 3.2, p[1] - land.zC);
     g.add(dune);
   }
 
-  // ---- flat-topped rocky MESAS & buttes ring the oasis — layered sandstone ----
+  // ---- CONTAINMENT RING: big flat-topped sandstone mesas wall in the zone ----
+  // grounded on the land edge (like the valley's mountain ring), overlapping so
+  // they read as a continuous rocky rim rather than spaced, floating pillars
   const rockCols = [0xcf9a5f, 0xc98a58, 0xd8a86a, 0xbb7d4c, 0xc78a52];
   const strataCol = 0xa9713f; // darker ledge band between layers
-  for (let i = 0; i < 11; i++) {
-    const a = (i / 11) * Math.PI * 2 + rng() * 0.35;
-    const r = land.R * (1.05 + rng() * 0.5);
-    const mx = Math.cos(a) * r, mz = Math.sin(a) * r;
+  const buildMesa = (base, H, layerN) => {
     const m = new THREE.Group();
-    const big = rng() > 0.45;
-    const base = big ? 11 + rng() * 9 : 5 + rng() * 4;
-    const H = big ? 13 + rng() * 13 : 5 + rng() * 6;
-    // 2-3 stacked WIDE layers that barely taper → a flat-topped mesa, not a cone,
-    // each capped with a thin darker strata band so it reads as sandstone
-    const layers = 2 + Math.floor(rng() * 2);
+    // buried sandy talus so the base blends into the dunes — no floating seam
+    const talus = ball(base * 1.35, 0xe0b878, 0.22, 11);
+    talus.position.y = -1.2; talus.scale.set(1.2, 0.5, 1.2);
+    m.add(talus);
     let y = 0;
-    for (let l = 0; l < layers; l++) {
-      const k = 1 - l * (0.14 + rng() * 0.08);
-      const hh = (H / layers) * (0.8 + rng() * 0.4);
+    for (let l = 0; l < layerN; l++) {
+      const k = 1 - l * (0.13 + rng() * 0.07);        // barely tapers → flat top
+      const hh = (H / layerN) * (0.8 + rng() * 0.4);
       const seg = 7 + Math.floor(rng() * 3);
-      const layer = cyl(base * k * 0.9, base * k, hh, rockCols[(i + l) % rockCols.length], seg);
+      const layer = cyl(base * k * 0.9, base * k, hh, rockCols[l % rockCols.length], seg);
       // jitter the rim for a craggy, non-perfect silhouette
       const pos = layer.geometry.attributes.position, v = new THREE.Vector3();
       for (let vi = 0; vi < pos.count; vi++) { v.fromBufferAttribute(pos, vi); const j = 1 + (rng() - 0.5) * 0.16; pos.setXYZ(vi, v.x * j, v.y, v.z * j); }
       layer.geometry.computeVertexNormals();
-      layer.position.y = y + hh / 2;
-      layer.rotation.y = rng() * Math.PI;
+      layer.position.y = y + hh / 2; layer.rotation.y = rng() * Math.PI;
       m.add(layer);
       const band = cyl(base * k * 0.93, base * k * 0.93, hh * 0.12, strataCol, seg);
-      band.position.y = y + hh * 0.42;
-      m.add(band);
+      band.position.y = y + hh * 0.42; m.add(band);
       y += hh * 0.92;
     }
-    // a soft FLAT rock cap (deliberately not a spike)
-    const cap = cyl(base * 0.55, base * 0.7, H * 0.09, rockCols[i % rockCols.length], 8);
-    cap.position.y = y + H * 0.03;
-    m.add(cap);
-    // a low sandy skirt where the rock meets the dunes
-    const skirt = ball(base * 1.25, 0xe0b878, 0.22, 10);
-    skirt.position.y = 0.2; skirt.scale.set(1.15, 0.45, 1.15);
-    m.add(skirt);
-    m.position.set(mx, land.heightAt(mx, mz + land.zC) - 1, mz);
+    // a flat rock cap (deliberately not a spike)
+    const cap = cyl(base * 0.55, base * 0.7, H * 0.09, rockCols[0], 8);
+    cap.position.y = y + H * 0.03; m.add(cap);
+    return m;
+  };
+  const place = (m, x, z) => {
+    m.position.set(x, land.heightAt(x, z + land.zC) - 1.2, z);
     m.rotation.y = rng() * Math.PI;
     g.add(m);
+  };
+  const nMesa = 15;
+  for (let i = 0; i < nMesa; i++) {
+    const a = (i / nMesa) * Math.PI * 2 + (rng() - 0.5) * 0.18;
+    const rr = land.R * (0.84 + rng() * 0.11);
+    const mx = Math.cos(a) * rr, mz = Math.sin(a) * rr;
+    const tall = rng() > 0.4;
+    const base = tall ? 13 + rng() * 9 : 8 + rng() * 5;
+    const H = tall ? 26 + rng() * 16 : 12 + rng() * 8;
+    place(buildMesa(base, H, tall ? 3 + Math.floor(rng() * 2) : 2 + Math.floor(rng() * 2)), mx, mz);
+    // an overlapping shoulder butte so the rim reads continuous
+    if (rng() > 0.35) {
+      const off = base * (0.9 + rng() * 0.4), side = rng() < 0.5 ? 1 : -1;
+      const sx = mx - Math.sin(a) * off * side, sz = mz + Math.cos(a) * off * side;
+      place(buildMesa(base * (0.55 + rng() * 0.25), H * (0.5 + rng() * 0.3), 2 + Math.floor(rng() * 2)), sx, sz);
+    }
+  }
+  // a few smaller buttes scattered on the dune field for depth
+  for (let i = 0; i < 5; i++) {
+    const p = outerPoint(ctx, rng, land.R * 0.72, clear + 24);
+    if (!p) continue;
+    place(buildMesa(5 + rng() * 4, 6 + rng() * 7, 2), p[0], p[1] - land.zC);
   }
 
   // instanced saguaros (trunk + cap) beyond the clear band
