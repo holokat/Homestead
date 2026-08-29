@@ -17,16 +17,19 @@ export const GROW_PREMIUM = [2, 5, 10, 16];
 // price: buy outright with coins (alternative to the engagement req). price 0 = free/starter.
 // yield/sell: harvest units and per-unit sale price. produces: passive good id.
 export const CROPS = [
-  { id: 'carrot', name: 'Carrots', icon: '🥕', req: { notes: 1 }, price: 0, yield: 3, sell: 3, grow: GROW_STANDARD },
-  { id: 'wheat', name: 'Wheat', icon: '🌾', req: { reactions: 1 }, price: 0, yield: 4, sell: 2, grow: GROW_STANDARD },
-  { id: 'corn', name: 'Corn', icon: '🌽', req: { reactions: 2 }, price: 15, yield: 3, sell: 4, grow: GROW_STANDARD },
-  { id: 'tomato', name: 'Tomatoes', icon: '🍅', req: { replies: 1 }, price: 20, yield: 3, sell: 5, grow: GROW_STANDARD },
-  { id: 'pumpkin', name: 'Pumpkins', icon: '🎃', req: { reposts: 1 }, price: 30, yield: 2, sell: 8, grow: GROW_STANDARD },
-  { id: 'rice', name: 'Rice Paddy', icon: '🍚', req: { reactions: 4 }, price: 25, yield: 4, sell: 4, grow: GROW_STANDARD },
-  { id: 'sunflower', name: 'Sunflowers', icon: '🌻', req: { reactions: 6 }, price: 35, yield: 2, sell: 7, grow: GROW_STANDARD },
-  { id: 'strawberry', name: 'Strawberries', icon: '🍓', req: { replies: 3 }, price: 50, yield: 3, sell: 9, grow: GROW_PREMIUM },
-  { id: 'grapes', name: 'Grape Trellis', icon: '🍇', req: { zaps: 1 }, price: 60, yield: 3, sell: 10, grow: GROW_PREMIUM },
-  { id: 'watermelon', name: 'Watermelons', icon: '🍉', req: { reactions: 10 }, price: 70, yield: 2, sell: 12, grow: GROW_PREMIUM },
+  // Crops unlock with COINS only — engagement (notes/likes/replies/zaps) never
+  // gates a purchase, it only feeds a planted crop's GROWTH (see grow thresholds).
+  // Prices climb into a real save-up curve so reaching the top crop takes work.
+  { id: 'carrot', name: 'Carrots', icon: '🥕', price: 0, yield: 3, sell: 3, grow: GROW_STANDARD },
+  { id: 'wheat', name: 'Wheat', icon: '🌾', price: 0, yield: 4, sell: 2, grow: GROW_STANDARD },
+  { id: 'corn', name: 'Corn', icon: '🌽', price: 20, yield: 3, sell: 4, grow: GROW_STANDARD },
+  { id: 'tomato', name: 'Tomatoes', icon: '🍅', price: 40, yield: 3, sell: 5, grow: GROW_STANDARD },
+  { id: 'pumpkin', name: 'Pumpkins', icon: '🎃', price: 70, yield: 2, sell: 8, grow: GROW_STANDARD },
+  { id: 'rice', name: 'Rice Paddy', icon: '🍚', price: 100, yield: 4, sell: 4, grow: GROW_STANDARD },
+  { id: 'sunflower', name: 'Sunflowers', icon: '🌻', price: 140, yield: 2, sell: 7, grow: GROW_STANDARD },
+  { id: 'strawberry', name: 'Strawberries', icon: '🍓', price: 200, yield: 3, sell: 10, grow: GROW_PREMIUM },
+  { id: 'grapes', name: 'Grape Trellis', icon: '🍇', price: 280, yield: 3, sell: 13, grow: GROW_PREMIUM },
+  { id: 'watermelon', name: 'Watermelons', icon: '🍉', price: 380, yield: 2, sell: 18, grow: GROW_PREMIUM },
 ];
 
 export const TREES = [

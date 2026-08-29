@@ -2017,7 +2017,9 @@ function onSlotClick(kind, id, e) {
           { label: 'not now', fn: () => {} },
         ]);
       } else {
-        toast(`🔒 <b>${item.name}</b> — unlocks free once your notes earn ${reqLabel(item.req)}, or buy it for ${item.price}${COIN} (you have ${game.coins})`, false);
+        toast(item.req
+          ? `🔒 <b>${item.name}</b> — unlocks free once your notes earn ${reqLabel(item.req)}, or buy it for ${item.price}${COIN} (you have ${game.coins})`
+          : `🔒 <b>${item.name}</b> costs ${item.price}${COIN} — you have ${game.coins}. Earn more by harvesting and selling.`, false);
         audio.playSfx('denied', 0.25);
       }
     } else {
