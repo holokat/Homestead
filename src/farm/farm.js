@@ -1113,9 +1113,11 @@ export class Homestead {
     if (on) {
       if (this.camera.parent !== this.scene) this.scene.add(this.camera); // so camera children render
       const vm = buildBowViewmodel(tier);
-      vm.scale.setScalar(0.7);
-      vm.position.set(0.42, -0.5, -1.5); // camera space: to the right, low, forward
-      vm.rotation.set(0.04, -0.22, 0.1);
+      // held on the LEFT of the view (opposite the crosshair area), mirrored so it
+      // reads as a left-hand hold; the arrow still points forward toward center
+      vm.scale.set(-0.7, 0.7, 0.7);
+      vm.position.set(-0.42, -0.5, -1.5);
+      vm.rotation.set(0.04, 0.22, -0.1);
       this.camera.add(vm);
       this.bowVM = vm;
       this._bowRestZ = vm.userData.arrow ? vm.userData.arrow.position.z : 0;
@@ -2691,6 +2693,10 @@ export class Homestead {
               // bunnies & squirrels never rest — dart off in a new direction
               rm.heading = Math.random() * Math.PI * 2;
               rm.t0 = 0; rm.until = 500 + Math.random() * 1100;
+            } else if (rm.quarry === 'bear') {
+              // a bear prowls almost constantly — turn and keep walking (legs moving)
+              rm.heading += (Math.random() - 0.5) * 1.4;
+              rm.t0 = 0; rm.until = 2500 + Math.random() * 3500;
             } else {
               rm.state = 'graze'; rm.t0 = 0; rm.until = 2500 + Math.random() * 4000;
             }
