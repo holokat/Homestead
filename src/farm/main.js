@@ -2530,6 +2530,23 @@ const QUARRY_LABEL = {
 function handleHuntResult(res) {
   if (!res) return;
   if (res.noTarget) { toast('🏹 nothing in your sights — hover an animal, then click', false); return; }
+  // shooting a predator to defend the farm
+  if (res.predator) {
+    if (res.killed) {
+      const bounty = res.predator === 'wolf' ? 40 : 20;
+      game.bumpStat('predatorsDriven');
+      if (!testMode) game.addCoins(bounty);
+      renderCoins(); floatAtCoins(`+${bounty}${COIN}`); audio.playSfx('harvest', 0.5);
+      const pIcon = res.predator === 'wolf' ? '🐺' : '🦊';
+      bigMoment(`🏹 you drove off the ${pIcon} ${res.predator}! +${bounty}${COIN} bounty`);
+      return;
+    }
+    audio.playSfx('flip', 0.3);
+    if (res.hit) toast(`🏹 hit the ${res.predator} — it's wounded and fleeing!`, false);
+    else if (res.tooFar) toast('🏹 too far — get closer for the shot', false);
+    else toast(`🏹 missed! the ${res.predator} bolted`, false);
+    return;
+  }
   const label = res.quarry === 'deer'
     ? (res.variant === 'fawn' ? 'fawn' : res.variant === 'doe' ? 'doe' : 'buck')
     : (QUARRY_LABEL[res.quarry] || 'critter');

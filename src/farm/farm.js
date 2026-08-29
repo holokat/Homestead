@@ -594,7 +594,14 @@ export class Homestead {
       // foxes raid only occasionally; night wolves are hungrier
       t0: 0, ph: Math.random() * 10,
       nextHunt: (this._lastNow || performance.now()) + (type === 'wolf' ? 4000 + Math.random() * 6000 : 30000 + Math.random() * 45000),
+      hp: 1, // one solid arrow drops a predator (they flee fast — a hit is earned)
     };
+    // an invisible target column so the bow can shoot the predator
+    const hit = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 2.4, 6), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = 1.1;
+    hit.userData.predator = model;
+    model.add(hit);
+    model.userData.hitMesh = hit;
     this.scene.add(model);
     this.predators.push(model);
     return model;
@@ -626,13 +633,14 @@ export class Homestead {
   }
 
   _updatePredators(now) {
-    const night = this.dayFactor < 0.32;
-    // wolves stalk the farm at night, then melt back into the trees at dawn
+    const night = this.dayFactor < 0.4;
+    // a small pack of wolves prowls every night (whether or not there are animals
+    // to hunt), then melts back into the trees at dawn
     if (night) {
-      if (!this._nextWolf) this._nextWolf = now + 6000;
-      const wolves = this.predators.reduce((n, p) => n + (p.userData.hunt.type === 'wolf'), 0);
-      if (wolves < 3 && now >= this._nextWolf && this.animalRecs.size > 0) {
-        this._spawnPredator('wolf'); this._nextWolf = now + 14000 + Math.random() * 20000;
+      if (!this._nextWolf) this._nextWolf = now + 4000;
+      const wolves = this.predators.reduce((n, p) => n + (p.userData.hunt.type === 'wolf' ? 1 : 0), 0);
+      if (wolves < 2 && now >= this._nextWolf) {
+        this._spawnPredator('wolf'); this._nextWolf = now + 10000 + Math.random() * 14000;
       }
     } else {
       this._nextWolf = 0;
@@ -668,9 +676,28 @@ export class Homestead {
         h.heading += (Math.random() - 0.5) * 0.08;
         if (h.t0 > h.until) { h.t0 = 0; h.until = 2500 + Math.random() * 3000; h.heading = Math.random() * Math.PI * 2; }
       }
+      // leash: don't let a predator wander off to the horizon — turn it back
+      const leash = this.W * 1.25;
+      const dc = Math.hypot(gp.x, gp.z - h.cz);
+      if (dc > leash && h.state !== 'stalk') {
+        const inward = Math.atan2(h.cz - gp.z, -gp.x);
+        let df = inward - h.heading; while (df > Math.PI) df -= Math.PI * 2; while (df < -Math.PI) df += Math.PI * 2;
+        h.heading += df * 0.15;
+      }
       const spd = (h.state === 'stalk' || h.state === 'flee') ? h.speed : h.speed * 0.45;
       gp.x += Math.cos(h.heading) * spd * dt;
       gp.z += Math.sin(h.heading) * spd * dt;
+      // wolves can't cross an INTACT fence — they prowl the perimeter until it
+      // breaks. (Foxes are sneaky and slip through regardless.)
+      if (h.type === 'wolf' && this.fence && !this.fenceBroken) {
+        const f = this.fence, fx = f.x + 1, fzF = f.zFront + 1, fzB = f.zBack - 1;
+        if (gp.x > -fx && gp.x < fx && gp.z > fzB && gp.z < fzF) {
+          const dl = gp.x + fx, dr = fx - gp.x, db = gp.z - fzB, dtp = fzF - gp.z;
+          const mn = Math.min(dl, dr, db, dtp);
+          if (mn === dl) gp.x = -fx; else if (mn === dr) gp.x = fx;
+          else if (mn === db) gp.z = fzB; else gp.z = fzF;
+        }
+      }
       p.rotation.y = Math.atan2(-Math.sin(h.heading), Math.cos(h.heading));
       const gait = h.state === 'prowl' ? 150 : 80;
       const swing = Math.sin(now / gait + h.ph) * (h.state === 'prowl' ? 0.4 : 0.75);
@@ -1278,7 +1305,7 @@ export class Homestead {
   setHuntMode(on, tier = 1) {
     this.huntMode = !!on;
     this.bowTier = on ? tier : 0;
-    if (!on) { this.hoveredDeer = null; this.drawing = null; }
+    if (!on) { this.hoveredDeer = null; this.hoveredPredator = null; this.drawing = null; }
     if (this.controls && on) this.controls.autoRotate = false;
     this.renderer.domElement.style.cursor = on ? 'crosshair' : 'grab';
     // the first-person bow is a real 3D model parented to the camera
@@ -1330,6 +1357,12 @@ export class Homestead {
   // the shot isn't instant; _updateDraw() fires the actual shot when it completes.
   _tryShoot() {
     if (this.drawing) return; // already at full draw / mid-shot
+    const pred = this.hoveredPredator; // predators take priority — they're the threat
+    if (pred) {
+      this.drawing = { target: pred, at: this._lastNow || performance.now(), dur: 500, isPredator: true };
+      try { this.onBowState && this.onBowState('draw'); } catch {}
+      return;
+    }
     const deer = this.hoveredDeer;
     if (!deer || !deer.userData.roam) { this.onDeerResult({ hit: false, noTarget: true }); return; }
     const rm = deer.userData.roam;
@@ -1341,16 +1374,51 @@ export class Homestead {
   _updateDraw(now) {
     if (!this.drawing) return;
     if (now - this.drawing.at >= this.drawing.dur) {
-      const deer = this.drawing.target;
+      const target = this.drawing.target;
+      const isPred = this.drawing.isPredator;
       this.drawing = null;
       this._bowFired = now; // the 3D viewmodel arrow flies off briefly
       try { this.onBowState && this.onBowState('release'); } catch {}
-      // target may have wandered out of range/died during the draw — re-validate
-      if (deer && deer.userData.roam && deer.visible
-        && !['dead', 'respawning', 'rage'].includes(deer.userData.roam.state)) {
-        this._resolveShot(deer);
+      if (isPred) {
+        if (target && target.userData.hunt && this.predators.includes(target)) this._resolvePredatorShot(target);
+      } else if (target && target.userData.roam && target.visible
+        && !['dead', 'respawning', 'rage'].includes(target.userData.roam.state)) {
+        this._resolveShot(target);
       }
     }
+  }
+
+  _resolvePredatorShot(pred) {
+    const h = pred.userData.hunt;
+    const MAX_RANGE = 95, NEAR = 34;
+    const tgt = pred.position.clone(); tgt.y += 1.0;
+    const d = this.camera.position.distanceTo(tgt);
+    const tooFar = d > MAX_RANGE;
+    let hit = false;
+    if (!tooFar) {
+      const chance = Math.max(0.1, Math.min(0.95, 0.95 - Math.max(0, d - NEAR) / (MAX_RANGE - NEAR) * 0.85));
+      hit = Math.random() < chance;
+    }
+    const from = this.camera.position.clone();
+    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(this.camera.quaternion);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    from.addScaledVector(fwd, 3).addScaledVector(down, 1.2);
+    let land = tgt.clone();
+    if (!hit) {
+      if (tooFar) { land = from.clone().lerp(tgt, 0.6); land.y = 0.15; }
+      else { land.x += (Math.random() - 0.5) * 3; land.z += (Math.random() - 0.5) * 3; land.y = 0.2; }
+    }
+    this._spawnArrow(from, land, () => {
+      let killed = false;
+      if (hit) {
+        h.hp = (h.hp || 1) - 1;
+        if (h.hp <= 0) { killed = true; this._spawnBlood(pred.position.x, pred.position.z, 0.5); this._removePredator(pred); }
+        else { h.state = 'flee'; h.fleeUntil = (this._lastNow || performance.now()) + 3000; }
+      } else {
+        h.state = 'flee'; h.fleeUntil = (this._lastNow || performance.now()) + 3000;
+      }
+      this.onDeerResult({ hit, killed, tooFar, predator: h.type, distance: d });
+    });
   }
 
   _resolveShot(deer) {
@@ -2885,9 +2953,9 @@ export class Homestead {
             const wd3 = Math.hypot(wdx3, wdz3) || 1;
             if (wd3 < wz.r) { gp.x = wz.x + (wdx3 / wd3) * wz.r; gp.z = wz.z + (wdz3 / wd3) * wz.r; }
           }
-          // object avoidance: never let an animal cross into the fenced farm —
-          // clamp it to the nearest fence edge and turn it back outward
-          if (this.fence) {
+          // object avoidance: an INTACT fence keeps deer/critters/bear out — clamp
+          // them to the fence edge. A broken fence lets them wander in (to eat crops).
+          if (this.fence && !this.fenceBroken) {
             const fx = this.fence.x + 2.5, fzF = this.fence.zFront + 2.5, fzB = this.fence.zBack - 2.5;
             if (gp.x > -fx && gp.x < fx && gp.z > fzB && gp.z < fzF) {
               const dl = gp.x + fx, dr = fx - gp.x, db = gp.z - fzB, dt = fzF - gp.z;
@@ -3272,6 +3340,12 @@ export class Homestead {
           && d.userData.roam.state !== 'dead' && d.userData.roam.state !== 'respawning');
         const dHits = this.raycaster.intersectObjects(targets.map((d) => d.userData.hit), false);
         if (dHits.length) this.hoveredDeer = dHits[0].object.userData.deer;
+      }
+      // predators are shootable too — defend the farm
+      this.hoveredPredator = null;
+      if (this.huntMode && this.predators && this.predators.length) {
+        const pHits = this.raycaster.intersectObjects(this.predators.map((p) => p.userData.hitMesh).filter(Boolean), false);
+        if (pHits.length) this.hoveredPredator = pHits[0].object.userData.predator;
       }
       if (plot !== this.hovered) {
         this.hovered = plot;
