@@ -562,14 +562,12 @@ export class FishingSession {
         this._setState('catch', this.now || (this.stateStart ?? 0));
         this.stateStart = null; // re-anchor on next update for smooth timing
       } else if (this.state === 'waiting') {
-        // clicked too early — subtle ripple, maybe spooked
-        this.falseClicks += 1;
-        this._spawnRipple(this.landPoint.x, this.landPoint.z, 1.5, 450);
-        if (this.falseClicks > MAX_FALSE_CLICKS) {
-          this._finish(null);
-        }
+        // reeled in before the bite — you spook the fish and lose the cast entirely.
+        // that's the penalty: the bobber comes back and you have to re-cast.
+        this._spawnRipple(this.landPoint.x, this.landPoint.z, 1.6, 450);
+        this._finish({ tooSoon: true });
       }
-      // during 'cast': ignore clicks
+      // during 'cast': ignore clicks (line still in flight)
     } catch (e) {
       // swallow — defensive by contract
     }

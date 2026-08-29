@@ -46,6 +46,8 @@ export const OBJECTS = [
   { id: 'goldpond', name: 'Goldfish Pond', icon: '🐟', req: { reactions: 14 }, price: 60 },
   { id: 'tractor', name: 'Tractor', icon: '🚜', req: { reactions: 15 }, price: 150 },
   { id: 'koipond', name: 'Koi Pond', icon: '🎏', req: { reactions: 20 }, price: 90 },
+  // fish trap — placed IN water (a lake or stream), passively catches fish
+  { id: 'fish_trap', name: 'Fish Trap', icon: '🪤', req: { reactions: 6 }, price: 55, produces: 'trapped_fish', water: true },
   // campsite decor — the campfire & lantern glow and cast light (day/night later)
   { id: 'campfire', name: 'Campfire', icon: '🔥', req: { replies: 3 }, price: 40 },
   { id: 'tent', name: 'Tent', icon: '⛺', req: { reactions: 6 }, price: 60 },
@@ -104,6 +106,7 @@ export const GOODS = {
   venison: { name: 'Venison', icon: '🥩', sell: 6 },
   game_meat: { name: 'Wild Game', icon: '🍗', sell: 4 },
   bear_meat: { name: 'Bear Meat', icon: '🐻', sell: 12 },
+  trapped_fish: { name: 'Trapped Fish', icon: '🐟', sell: 7 }, // passive catch from a fish trap
 };
 
 // enough to make two or three meaningful first purchases (a producing animal

@@ -463,12 +463,31 @@ const missionToastShown = new Set(); // completion pings, once per session
 // the next available (in-progress) missions stay on top; a mission you've
 // accomplished but not yet claimed drops BELOW them, so the next actionable
 // goal is always the first thing you see.
+// missions unlock strictly in chain order: the claimable set is the CONTIGUOUS
+// run of completed missions from the front of the unclaimed chain. A far-off
+// goal you happen to satisfy early (e.g. "catch 10 fish") stays locked until the
+// missions before it are claimed — so finishing one thing never dumps a stack of
+// unrelated rewards, and progress reads in the intended teaching order.
+const missionDone = (m) => missionProgress(m, game) >= m.target;
+function claimableMissions() {
+  const out = [];
+  for (const m of MISSIONS) {
+    if (game.missionsClaimed.includes(m.id)) continue;
+    if (missionDone(m)) out.push(m);
+    else break; // first unmet unclaimed mission blocks everything after it
+  }
+  return out;
+}
 const activeMissions = () => {
-  const unclaimed = MISSIONS.filter((m) => !game.missionsClaimed.includes(m.id));
-  const done = (m) => missionProgress(m, game) >= m.target;
-  const inProgress = unclaimed.filter((m) => !done(m));
-  const ready = unclaimed.filter(done);
-  return [...inProgress.slice(0, 3), ...ready];
+  const claim = claimableMissions();
+  const claimIds = new Set(claim.map((m) => m.id));
+  const upcoming = [];
+  for (const m of MISSIONS) {
+    if (game.missionsClaimed.includes(m.id) || claimIds.has(m.id)) continue;
+    upcoming.push(m);
+    if (upcoming.length >= 3) break;
+  }
+  return [...claim, ...upcoming];
 };
 
 function renderMissions() {
@@ -477,9 +496,9 @@ function renderMissions() {
   const discovered = game.discovered.length;
   $('#hud-book').dataset.count = discovered;
   if (!isOwner()) { $('#missions-panel').classList.add('hidden'); return; }
-  const act = activeMissions();
-  const claimable = act.filter((m) => missionProgress(m, game) >= m.target);
-  const inProgress = act.filter((m) => !claimable.includes(m));
+  const claimable = claimableMissions(); // strictly the in-order completed run
+  const claimIds = new Set(claimable.map((m) => m.id));
+  const inProgress = activeMissions().filter((m) => !claimIds.has(m.id));
   const badge = $('#hud-quest-badge');
   badge.textContent = claimable.length;
   badge.classList.toggle('hidden', !claimable.length);
@@ -499,7 +518,7 @@ function renderMissions() {
   const shown = [...claimable, ...inProgress.slice(0, 2)];
   $('#missions-list').innerHTML = shown.map((m) => {
     const p = missionProgress(m, game);
-    const done = p >= m.target;
+    const done = claimIds.has(m.id); // only the in-order completed run is claimable
     return `<div class="mp-row">
       <div class="mp-head"><span>${m.icon}</span><span>${esc(m.title)}</span><span class="mp-reward">+${m.reward}${COIN}</span></div>
       ${done ? '' : m.desc ? `<div class="mp-desc">${esc(m.desc)}</div>` : ''}
@@ -516,6 +535,8 @@ function renderMissions() {
 function claimMission(id) {
   const m = MISSIONS.find((x) => x.id === id);
   if (!m || game.missionsClaimed.includes(m.id) || missionProgress(m, game) < m.target) return;
+  // only the in-order completed run may be claimed — no jumping ahead in the chain
+  if (!claimableMissions().some((x) => x.id === id)) return;
   game.missionsClaimed.push(m.id);
   game.addCoins(m.reward);
   game.save();
@@ -978,6 +999,7 @@ function buildFarmScene() {
     onDockClick: tryFish,
     onFishResult: handleFishResult,
     onDeerResult: handleHuntResult,
+    onBowState: handleBowState,
     onProductReady: handleProductReady,
     onConstructionKnock: () => audio.playSfx('construction-hammer-under-way', 0.4),
     onHouseClick: handleHouseClick,
@@ -1364,8 +1386,8 @@ const TOOLS = [
 // Bows: bought in the Craft tab, then equipped from the Inventory tab to hunt.
 // `tier` gates quarry — a bear needs a tier-2 (composite) bow or it just enrages.
 const BOWS = [
-  { id: 'hunting_bow', name: 'Hunting Bow', icon: '🏹', price: 85, tier: 1, desc: 'A sturdy recurve for deer and small game.' },
-  { id: 'composite_bow', name: 'Composite Bow', icon: '🎯', price: 850, tier: 2, desc: 'Layered horn and sinew — draw enough to fell a bear.' },
+  { id: 'hunting_bow', name: 'Hunting Bow', icon: '🏹', img: '/ui/bow-hunting.png', price: 85, tier: 1, desc: 'A sturdy recurve for deer and small game.' },
+  { id: 'composite_bow', name: 'Composite Bow', icon: '🎯', img: '/ui/bow-composite.png', price: 850, tier: 2, desc: 'Layered horn and sinew — draw enough to fell a bear.' },
 ];
 function bowInfo(id) { return BOWS.find((b) => b.id === id) || null; }
 function bowTier(id) { return bowInfo(id)?.tier || 0; }
@@ -1409,49 +1431,26 @@ function unequipBow() {
   renderHud();
 }
 
-// ---- first-person bow "viewmodel": an SVG bow, drawn, held at the bottom ----
+// ---- first-person bow "viewmodel": the painted bow artwork held at the bottom,
+// arrow aimed toward the center of the view; it nocks/draws then looses on a shot
 function showBowViewmodel(id) {
   let el = document.getElementById('bow-viewmodel');
   if (!el) { el = document.createElement('div'); el.id = 'bow-viewmodel'; document.body.appendChild(el); }
-  const composite = bowTier(id) >= 2;
-  const wood = composite ? '#3a2c22' : '#6b4a2b';
-  const woodEdge = composite ? '#5b4636' : '#8a6a3f';
-  const grip = composite ? '#b7472e' : '#9c6a3a';
-  el.innerHTML = `
-  <svg viewBox="0 0 900 640" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
-    <!-- drawn string -->
-    <polyline id="bvm-string" points="300,90 150,360 300,630" fill="none" stroke="#efece2" stroke-width="4" stroke-linejoin="round" opacity="0.92"/>
-    <!-- bow limbs (recurve) -->
-    <path d="M300,90 C 480,270 480,450 300,630" fill="none" stroke="${wood}" stroke-width="22" stroke-linecap="round"/>
-    <path d="M300,90 C 480,270 480,450 300,630" fill="none" stroke="${woodEdge}" stroke-width="9" stroke-linecap="round"/>
-    ${composite ? `<path d="M300,90 C 480,270 480,450 300,630" fill="none" stroke="#d8a05a" stroke-width="2.5" stroke-dasharray="2 12" opacity="0.7"/>` : ''}
-    <!-- riser grip -->
-    <rect x="360" y="300" width="30" height="120" rx="12" fill="${wood}"/>
-    <rect x="366" y="306" width="9" height="108" rx="5" fill="${grip}"/>
-    <!-- arrow: nocked at the draw point, pointing up-right toward the crosshair -->
-    <g id="bvm-arrow" class="bow-arrow">
-      <line x1="150" y1="360" x2="760" y2="150" stroke="#caa26a" stroke-width="6" stroke-linecap="round"/>
-      <polygon points="760,150 726,150 748,176" fill="#cfd3d9"/>
-      <path d="M150,360 l -24,-20 l 6,20 l -12,18 z" fill="#efece2"/>
-      <path d="M168,353 l -20,-16 l 5,16 l -10,15 z" fill="#d9d4c6"/>
-    </g>
-  </svg>`;
+  const bow = bowInfo(id) || BOWS[0];
+  const img = bow.img || '/ui/bow-hunting.png';
+  el.innerHTML = `<div class="bvm-wrap"><img class="bvm-bow" src="${img}" alt=""></div>`;
   el.classList.remove('hidden');
 }
 function hideBowViewmodel() { const el = document.getElementById('bow-viewmodel'); if (el) el.classList.add('hidden'); }
-// recoil: loose the arrow, snap the string, then re-draw
-function bumpBowShot() {
-  const el = document.getElementById('bow-viewmodel');
-  if (!el || el.classList.contains('hidden')) return;
-  const str = el.querySelector('#bvm-string');
-  const arr = el.querySelector('#bvm-arrow');
-  if (str) str.setAttribute('points', '300,90 300,360 300,630'); // snap to rest
-  if (arr) arr.classList.add('loosed');
-  clearTimeout(el._redraw);
-  el._redraw = setTimeout(() => {
-    if (str) str.setAttribute('points', '300,90 150,360 300,630'); // re-draw
-    if (arr) arr.classList.remove('loosed');
-  }, 300);
+// bow states from the engine: 'draw' pulls the bow back (~0.5s), 'release' looses
+function handleBowState(state) {
+  const w = document.querySelector('#bow-viewmodel .bvm-wrap');
+  if (!w) return;
+  if (state === 'draw') { w.classList.remove('released'); w.classList.add('drawing'); }
+  else if (state === 'release') {
+    w.classList.remove('drawing'); w.classList.add('released');
+    clearTimeout(w._t); w._t = setTimeout(() => w.classList.remove('released'), 420);
+  }
 }
 
 // coin display counts up/down instead of snapping
@@ -1707,10 +1706,11 @@ function cellForItem(item, kind) {
   else if (isUn) canGet = true;                         // unlocked & free to place
   else if (price != null) canGet = game.coins >= price || testMode; // buy to unlock
   else canGet = false;                                  // engagement-gated, no coin path
-  // bows have no world model — show their emoji, not a rendered thumbnail
+  // bows use their painted artwork; everything else renders a model thumbnail
   const isBow = kind === 'bow';
   const thumb = isBow ? null : getThumb(item.id);
-  const face = thumb ? `<img src="${thumb}" alt=""/>` : item.icon;
+  const face = isBow && item.img ? `<img class="bow-img" src="${item.img}" alt="${esc(item.name)}"/>`
+    : thumb ? `<img src="${thumb}" alt=""/>` : item.icon;
   return `<button class="cell item ${isUn ? 'unlocked' : 'locked'} ${canGet ? '' : 'cant-afford'} ${active ? 'active' : ''}" data-kind="${kind}" data-id="${item.id}">
     <span class="cell-face">${face}</span>
     ${showBadge ? `<span class="badge">${badge}</span>` : ''}
@@ -1776,7 +1776,8 @@ function renderHud() {
     cellsHtml = page.map((c) => {
       if (c.type === 'bow') {
         const on = equippedBow === c.bow.id;
-        return `<button class="cell bow ${on ? 'equipped' : ''}" data-bow="${c.bow.id}" title="${esc(c.bow.name)} — tap to ${on ? 'put away' : 'equip & hunt'}">${c.bow.icon}</button>`;
+        const face = c.bow.img ? `<img class="bow-img" src="${c.bow.img}" alt="${esc(c.bow.name)}">` : c.bow.icon;
+        return `<button class="cell bow ${on ? 'equipped' : ''}" data-bow="${c.bow.id}" title="${esc(c.bow.name)} — tap to ${on ? 'put away' : 'equip & hunt'}">${face}</button>`;
       }
       const g = goodInfo(c.id);
       return `<button class="cell inv" data-good="${c.id}">
@@ -2444,6 +2445,11 @@ function tryFish() {
 
 function handleFishResult(fish) {
   setModeBanner(null);
+  if (fish && fish.tooSoon) {
+    audio.playSfx('flip', 0.3);
+    toast('🎣 reeled in too soon — the line came back empty. Cast again and wait for a bite!', false);
+    return;
+  }
   if (!fish) {
     toast('🎣 it got away…', false);
     return;
@@ -2486,7 +2492,6 @@ const QUARRY_LABEL = {
 function handleHuntResult(res) {
   if (!res) return;
   if (res.noTarget) { toast('🏹 nothing in your sights — hover an animal, then click', false); return; }
-  bumpBowShot(); // recoil/redraw the viewmodel
   const label = res.quarry === 'deer'
     ? (res.variant === 'fawn' ? 'fawn' : res.variant === 'doe' ? 'doe' : 'buck')
     : (QUARRY_LABEL[res.quarry] || 'critter');

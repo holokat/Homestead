@@ -19,23 +19,25 @@ import { buildDeer } from './deer.js';
 import { buildMeat } from './meat_models.js';
 import { buildCritter } from './critter_models.js';
 import { buildCamp } from './camp_models.js';
+import { buildFishTrap } from './fishtrap_models.js';
 import { buildGLB, glbReady } from './glb_models.js';
 
 // campsite decor ids (catalog) → camp_models builder ids
 const CAMP_IDS = new Set(['campfire', 'tent', 'camp_chair', 'camp_lantern']);
+// items that must be placed IN water (a lake/stream), and may sit outside the farm
+const WATER_ITEMS = new Set(['fish_trap']);
 // the authored deer GLB stands ~4.5u tall in its own units; bring it to farm scale
 const GLB_DEER_SCALE = 0.5;
-const GLB_BOAT_SCALE = 1.6;
 
 // Huntable quarry. `minTier` is the bow tier needed to actually down it — a bear
 // shrugs off a tier-1 bow and charges the farm instead. `hitR` is the click
 // target radius (smaller = harder to hit), `flee` the panic-speed multiplier,
 // `hp` the [min,max] arrows-to-kill (deer take 2–3; small critters drop in one).
 const QUARRY = {
-  deer:     { meat: 'venison',   yield: { buck: 3, doe: 2, fawn: 1 }, minTier: 1, hitR: 0.95, base: 1.6, flee: 4.6, hp: [2, 3] },
-  bunny:    { meat: 'game_meat', yield: 1, minTier: 1, hitR: 0.55, base: 2.6, flee: 5.2, hp: [1, 1] },
-  squirrel: { meat: 'game_meat', yield: 1, minTier: 1, hitR: 0.5,  base: 2.8, flee: 5.4, hp: [1, 1] },
-  bear:     { meat: 'bear_meat', yield: 4, minTier: 2, hitR: 1.3,  base: 1.3, flee: 3.4, hp: [3, 4], dangerous: true },
+  deer:     { meat: 'venison',   yield: { buck: 3, doe: 2, fawn: 1 }, minTier: 1, hitR: 0.95, base: 1.6, flee: 9.5, hp: [2, 3] },
+  bunny:    { meat: 'game_meat', yield: 1, minTier: 1, hitR: 0.55, base: 4.2, flee: 7.5, hp: [1, 1], restless: true },
+  squirrel: { meat: 'game_meat', yield: 1, minTier: 1, hitR: 0.5,  base: 4.6, flee: 7.8, hp: [1, 1], restless: true },
+  bear:     { meat: 'bear_meat', yield: 4, minTier: 2, hitR: 1.3,  base: 1.3, flee: 4.0, hp: [3, 4], dangerous: true },
 };
 import { buildTurtle, buildDolphin, buildSeagull } from './beach_life.js';
 import { buildProcessor, buildMerchantItem, PROCESSOR_RADIUS } from './processors.js';
@@ -112,7 +114,7 @@ function buildingGroupFor(type, opts) {
 }
 
 export class Homestead {
-  constructor(container, { cols, rows, tier = 1, themeId = 'meadow', signText, hideSign = false, farmhouseLevel = 1, onPlotHover, onPlotClick, onObjectClick, onObjectHover, onSignClick, onAnimalSound, onMarketClick, onDockClick, onFishResult, onProductReady, onConstructionKnock, onHouseClick, houseRot, houseOffset, onWindmillClick, windmillRot, onGateToggle, onDeerResult } = {}) {
+  constructor(container, { cols, rows, tier = 1, themeId = 'meadow', signText, hideSign = false, farmhouseLevel = 1, onPlotHover, onPlotClick, onObjectClick, onObjectHover, onSignClick, onAnimalSound, onMarketClick, onDockClick, onFishResult, onProductReady, onConstructionKnock, onHouseClick, houseRot, houseOffset, onWindmillClick, windmillRot, onGateToggle, onDeerResult, onBowState } = {}) {
     this.container = container;
     this.cols = cols;
     this.rows = rows;
@@ -137,9 +139,11 @@ export class Homestead {
     this.windmillRot = typeof windmillRot === 'number' ? windmillRot : null;
     this.onGateToggle = onGateToggle || (() => {});
     this.onDeerResult = onDeerResult || (() => {});
+    this.onBowState = onBowState || (() => {});
     // hunting: bow tool aims at deer; hit odds fall off with camera distance
     this.huntMode = false;
     this.hoveredDeer = null;
+    this.drawing = null; // { target, at, dur } while the bow is being drawn
     this.arrows = [];   // in-flight arrow projectiles
     this.bloodFx = [];  // fading blood pools at kill sites
     this.houseRot = typeof houseRot === 'number' ? houseRot : null;
@@ -1010,8 +1014,9 @@ export class Homestead {
     wdx /= wdl; wdz /= wdl;
     const wcx = cast.x + wdx * 15, wcz = cast.z + wdz * 15;
     const zoneR = 22;
-    // the open water, as a disc deer steer clear of so they never wade in
-    this.deerWaterZone = { x: wcx, z: wcz, r: zoneR + 6 };
+    // the open water: `r` is the disc deer steer clear of; `waterR` is the actual
+    // fishable water radius (where a fish trap may be dropped)
+    this.deerWaterZone = { x: wcx, z: wcz, r: zoneR + 6, waterR: zoneR };
     for (let i = 0; i < 7; i++) {
       const group = new THREE.Group();
       const smat = new THREE.MeshBasicMaterial({ color: 0x14324a, transparent: true, opacity: 0, depthWrite: false });
@@ -1100,7 +1105,7 @@ export class Homestead {
   setHuntMode(on, tier = 1) {
     this.huntMode = !!on;
     this.bowTier = on ? tier : 0;
-    if (!on) this.hoveredDeer = null;
+    if (!on) { this.hoveredDeer = null; this.drawing = null; }
     if (this.controls && on) this.controls.autoRotate = false;
     this.renderer.domElement.style.cursor = on ? 'crosshair' : 'grab';
   }
@@ -1118,11 +1123,34 @@ export class Homestead {
     return { x: px, z: pz };
   }
 
+  // click → nock & draw the bow (~0.5s), THEN loose. The draw is a real delay so
+  // the shot isn't instant; _updateDraw() fires the actual shot when it completes.
   _tryShoot() {
+    if (this.drawing) return; // already at full draw / mid-shot
     const deer = this.hoveredDeer;
     if (!deer || !deer.userData.roam) { this.onDeerResult({ hit: false, noTarget: true }); return; }
     const rm = deer.userData.roam;
     if (rm.state === 'dead' || rm.state === 'respawning' || rm.state === 'rage') return;
+    this.drawing = { target: deer, at: this._lastNow || performance.now(), dur: 500 };
+    try { this.onBowState && this.onBowState('draw'); } catch {}
+  }
+
+  _updateDraw(now) {
+    if (!this.drawing) return;
+    if (now - this.drawing.at >= this.drawing.dur) {
+      const deer = this.drawing.target;
+      this.drawing = null;
+      try { this.onBowState && this.onBowState('release'); } catch {}
+      // target may have wandered out of range/died during the draw — re-validate
+      if (deer && deer.userData.roam && deer.visible
+        && !['dead', 'respawning', 'rage'].includes(deer.userData.roam.state)) {
+        this._resolveShot(deer);
+      }
+    }
+  }
+
+  _resolveShot(deer) {
+    const rm = deer.userData.roam;
     const q = QUARRY[rm.quarry] || QUARRY.deer;
     const MAX_RANGE = 95, NEAR = 34;
     const target = deer.position.clone(); target.y += (q.dangerous ? 1.4 : 1.0);
@@ -1230,8 +1258,8 @@ export class Homestead {
     if (rm.state === 'dead' || rm.state === 'respawning' || rm.state === 'rage') return;
     const q = QUARRY[rm.quarry] || QUARRY.deer;
     rm.state = 'flee';
-    rm.fleeUntil = (this._lastNow || performance.now()) + 3500;
-    rm.speed = q.base * q.flee; // bolt fast — small critters are the fastest
+    rm.fleeUntil = (this._lastNow || performance.now()) + 4500;
+    rm.speed = q.base * q.flee; // sprint away — deer bolt hard, you have to chase
     rm.heading = Math.atan2(deer.position.z - this.camera.position.z, deer.position.x - this.camera.position.x);
   }
 
@@ -1607,7 +1635,7 @@ export class Homestead {
         speed: spd, homeSpeed: spd,
         state: 'walk', until: 3000 + Math.random() * 4000, t0: 0,
         ph: Math.random() * 10, turtle: false, quarry, variant,
-        hp, hpMax: hp,
+        hp, hpMax: hp, restless: !!q.restless,
         mixer: anim && anim.mixer || null, actions: anim && anim.actions || null, clip: null,
       };
       const s = scaleMul || 1; // hit column stays a fixed WORLD size despite model scale
@@ -1646,10 +1674,8 @@ export class Homestead {
           addQuarry(buildDeer(variants[i]), 'deer', variants[i], 1);
         }
       }
-      addQuarry(buildCritter('bunny'), 'bunny', null, 1.5);
-      addQuarry(buildCritter('bunny'), 'bunny', null, 1.5);
-      addQuarry(buildCritter('squirrel'), 'squirrel', null, 1.5);
-      addQuarry(buildCritter('squirrel'), 'squirrel', null, 1.5);
+      for (let i = 0; i < 5; i++) addQuarry(buildCritter('bunny'), 'bunny', null, 1.5);
+      for (let i = 0; i < 4; i++) addQuarry(buildCritter('squirrel'), 'squirrel', null, 1.5);
       addQuarry(buildCritter('bear'), 'bear', null, 1.3);
     }
 
@@ -1683,23 +1709,6 @@ export class Homestead {
       }
     }
 
-    // a lone sailboat drifting the open ocean, circling the island under its own
-    // sail — the authored animated GLB, forever sailing forward (beach only)
-    this.boats = [];
-    if (isBeach && glbReady('boat')) {
-      const b = buildGLB('boat');
-      b.group.scale.setScalar(GLB_BOAT_SCALE);
-      const idle = b.actions['BoatIdle']; if (idle) idle.play();
-      const rad = this.W * (1.5 + Math.random() * 0.4);
-      const ang = Math.random() * Math.PI * 2;
-      b.group.userData.sail = {
-        mixer: b.mixer, cx: 0, cz: zc, rad, ang,
-        dir: Math.random() < 0.5 ? 1 : -1, speed: 0.11 + Math.random() * 0.04, waterY: -0.6,
-      };
-      b.group.position.set(Math.cos(ang) * rad, -0.6, zc + Math.sin(ang) * rad);
-      this.scene.add(b.group);
-      this.boats.push(b.group);
-    }
   }
 
   _plotPosition(index) {
@@ -1862,6 +1871,7 @@ export class Homestead {
   }
 
   _buildPlaceable(kind, type, opts) {
+    if (type === 'fish_trap') return buildFishTrap();
     if (CAMP_IDS.has(type)) return buildCamp(type === 'camp_lantern' ? 'lantern' : type);
     if (INFRA_BY_ID[type]) {
       // hand-built models replace placeholders one batch at a time
@@ -1918,7 +1928,9 @@ export class Homestead {
     const constructing = !!buildUntil && buildUntil > Date.now();
     const radius = this._radiusOf(type);
     const group = constructing ? buildConstructionSite(radius) : this._buildPlaceable(kind, type, opts);
-    group.position.set(x, this._groundY(), z);
+    // water items float at the water surface; everything else sits on the ground
+    const baseY = WATER_ITEMS.has(type) ? (this.dockWaterY ?? 0) + 0.05 : this._groundY();
+    group.position.set(x, baseY, z);
     group.rotation.y = rot;
     this.scene.add(group);
     // animals get a generous hit column — chasing a wandering cow with a
@@ -2036,6 +2048,18 @@ export class Homestead {
 
   _placementValid(x, z) {
     const r = this.placement.radius;
+    // water items (fish trap) must sit in open water and may live OUTSIDE the farm
+    if (WATER_ITEMS.has(this.placement.type)) {
+      const wz = this.deerWaterZone;
+      if (!wz) return false;
+      const waterR = wz.waterR || wz.r;
+      if (Math.hypot(x - wz.x, z - wz.z) > waterR - r - 0.5) return false; // fully in the water
+      if (this.dockPos && Math.hypot(x - this.dockPos.x, z - this.dockPos.z) < r + 5) return false; // clear of the dock
+      for (const rec of this.placed.values()) {
+        if (Math.hypot(x - rec.x, z - rec.z) < (r + this._radiusOf(rec.type)) * 0.8) return false;
+      }
+      return true;
+    }
     const f = this.fence;
     if (Math.abs(x) > f.x - r - 0.5) return false;
     if (z > f.zFront - r - 0.5 || z < f.zBack + r + 0.5) return false;
@@ -2065,7 +2089,8 @@ export class Homestead {
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     if (!this.raycaster.ray.intersectPlane(plane, hitPos)) { pl.ghost.visible = false; return; }
     pl.ghost.visible = true;
-    pl.ghost.position.set(hitPos.x, 0, hitPos.z);
+    const ghostY = WATER_ITEMS.has(pl.type) ? (this.dockWaterY ?? 0) + 0.05 : 0;
+    pl.ghost.position.set(hitPos.x, ghostY, hitPos.z);
     pl.ghost.rotation.y = pl.rot;
     pl.valid = this._placementValid(hitPos.x, hitPos.z);
     pl.ring.material.color.set(pl.valid ? 0x4caf50 : 0xd64545);
@@ -2483,7 +2508,7 @@ export class Homestead {
           rm.mixer.update(ddt);
           const st = rm.state;
           if (st === 'walk') this._playClip(rm, 'DeerWalk', 1);
-          else if (st === 'flee') this._playClip(rm, 'DeerWalk', 1.9);
+          else if (st === 'flee') this._playClip(rm, 'DeerWalk', 3.0);
           else if (st === 'graze') this._playClip(rm, 'DeerIdle', 1);
           else if ((st === 'dead' || st === 'respawning') && rm.clip) {
             if (rm.actions[rm.clip]) rm.actions[rm.clip].fadeOut(0.3);
@@ -2572,6 +2597,18 @@ export class Homestead {
             const wd3 = Math.hypot(wdx3, wdz3) || 1;
             if (wd3 < wz.r) { gp.x = wz.x + (wdx3 / wd3) * wz.r; gp.z = wz.z + (wdz3 / wd3) * wz.r; }
           }
+          // object avoidance: never let an animal cross into the fenced farm —
+          // clamp it to the nearest fence edge and turn it back outward
+          if (this.fence) {
+            const fx = this.fence.x + 2.5, fzF = this.fence.zFront + 2.5, fzB = this.fence.zBack - 2.5;
+            if (gp.x > -fx && gp.x < fx && gp.z > fzB && gp.z < fzF) {
+              const dl = gp.x + fx, dr = fx - gp.x, db = gp.z - fzB, dt = fzF - gp.z;
+              const mn = Math.min(dl, dr, db, dt);
+              if (mn === dl) gp.x = -fx; else if (mn === dr) gp.x = fx;
+              else if (mn === db) gp.z = fzB; else gp.z = fzF;
+              rm.heading = Math.atan2(gp.z - rm.cz, gp.x); // steer back out of the farm
+            }
+          }
           d.rotation.y = Math.atan2(-Math.sin(rm.heading), Math.cos(rm.heading));
           const gait = (fleeing || raging) ? 70 : 150;
           const swing = Math.sin(now / gait + rm.ph) * ((fleeing || raging) ? 0.8 : 0.5);
@@ -2580,15 +2617,42 @@ export class Homestead {
           if (rm.legs[1]) rm.legs[1].rotation.x = -swing;
           if (rm.legs[2]) rm.legs[2].rotation.x = -swing;
           if (rm.head) rm.head.rotation.x = Math.sin(now / 600 + rm.ph) * 0.05;
-          if (!fleeing && !raging && rm.t0 > rm.until) { rm.state = 'graze'; rm.t0 = 0; rm.until = 2500 + Math.random() * 4000; }
+          if (!fleeing && !raging && rm.t0 > rm.until) {
+            if (rm.restless) {
+              // bunnies & squirrels never rest — dart off in a new direction
+              rm.heading = Math.random() * Math.PI * 2;
+              rm.t0 = 0; rm.until = 500 + Math.random() * 1100;
+            } else {
+              rm.state = 'graze'; rm.t0 = 0; rm.until = 2500 + Math.random() * 4000;
+            }
+          }
         } else {
           // grazing: legs still, head dips to the grass
           for (const leg of rm.legs) if (leg) leg.rotation.x *= 0.9;
           if (rm.head) rm.head.rotation.x = 0.5 + Math.sin(now / 500 + rm.ph) * 0.05;
           if (rm.t0 > rm.until) { rm.state = 'walk'; rm.t0 = 0; rm.until = 3000 + Math.random() * 5000; rm.heading = Math.random() * Math.PI * 2; }
         }
+        // a charging bear rears up on its hind legs at the fence, front paws up
+        if (rm.quarry === 'bear') {
+          const cdist = Math.hypot(gp.x, gp.z - rm.cz);
+          const rearing = rm.state === 'rage' && cdist < rm.minR * 1.05; // reached the farm edge
+          const target = rearing ? 1.0 : 0; // radians of nose-up pitch when reared
+          rm.rear = (rm.rear || 0) + (target - (rm.rear || 0)) * Math.min(1, ddt * 5);
+          if (rm.rear > 0.01) {
+            // pitch about the LOCAL lateral axis (after yaw) so it rears cleanly
+            // instead of rolling onto its side
+            const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), d.rotation.y);
+            const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), rm.rear);
+            d.quaternion.copy(qYaw.multiply(qPitch));
+            if (rearing) { // paw the air with the front legs
+              if (rm.legs[0]) rm.legs[0].rotation.x = Math.sin(now / 120) * 0.6 - 0.4;
+              if (rm.legs[1]) rm.legs[1].rotation.x = Math.cos(now / 120) * 0.6 - 0.4;
+            }
+          }
+        }
       }
     }
+    this._updateDraw(now);
     this._updateArrows(now);
     this._updateBlood(now);
     // dolphins lap the island out on the water and periodically breach in a
@@ -2620,22 +2684,6 @@ export class Homestead {
           if (s.nextLeap <= 0) s.leap = 0.0001; // trigger the next breach
         }
         if (s.fluke) s.fluke.rotation.z = Math.sin(now / 170 + s.ang * 3) * 0.4; // fluke pump
-      }
-    }
-    // the sailboat glides forward around the ocean, bobbing on the swell
-    if (this.boats && this.boats.length) {
-      const dt = Math.min(0.05, (now - (this._boatNow || now)) / 1000);
-      this._boatNow = now;
-      for (const boat of this.boats) {
-        const s = boat.userData.sail;
-        if (s.mixer) s.mixer.update(dt);
-        s.ang += s.dir * s.speed * dt;
-        boat.position.x = s.cx + Math.cos(s.ang) * s.rad;
-        boat.position.z = s.cz + Math.sin(s.ang) * s.rad;
-        boat.position.y = s.waterY + Math.sin(now / 900 + s.ang) * 0.18; // ride the swell
-        const heading = s.ang + s.dir * Math.PI / 2; // travel tangent to the ring
-        boat.rotation.y = Math.atan2(-Math.sin(heading), Math.cos(heading)) + (s.yawOffset || 0);
-        boat.rotation.z = Math.sin(now / 1100 + s.ang) * 0.05; // gentle heel
       }
     }
     if (this.ripples) {

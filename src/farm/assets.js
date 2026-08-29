@@ -1111,5 +1111,5 @@ export const OBJECT_RADIUS = {
   barrel: 1.2, hay: 1.8, lantern: 1.2, scarecrow: 1.6, beehive: 1.4,
   chicken: 1.2, tractor: 2.6, sign: 3.6, koipond: 3.6, goldpond: 3.6,
   apple: 3.6, peach: 3.6, avocado: 3.6, cherry: 3.9,
-  campfire: 1.5, tent: 2.4, camp_chair: 1.0, camp_lantern: 0.9,
+  campfire: 1.5, tent: 2.4, camp_chair: 1.0, camp_lantern: 0.9, fish_trap: 1.2,
 };

@@ -10,6 +10,7 @@ import { buildPlaceholder } from './placeholder.js';
 import { INFRA_BY_ID } from './infrastructure.js';
 import { INFRA_MODELS } from './infra_models.js';
 import { buildCamp } from './camp_models.js';
+import { buildFishTrap } from './fishtrap_models.js';
 
 const CAMP_IDS = new Set(['campfire', 'tent', 'camp_chair', 'camp_lantern']);
 
@@ -57,6 +58,7 @@ function buildFor(id) {
   if (id === 'enclosure_large') return buildEnclosure('large');
   if (id.startsWith('farmhouse')) return buildFarmhouse(Number(id.slice(9)) || 1);
   if (CAMP_IDS.has(id)) return buildCamp(id === 'camp_lantern' ? 'lantern' : id);
+  if (id === 'fish_trap') return buildFishTrap();
   return buildObject(id, {});
 }
 
