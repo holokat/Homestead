@@ -136,13 +136,15 @@
 
   <!-- friends HUD (migrated out of the sidebar) -->
   <div id="friends-hud" class="hidden">
-    <div class="modal-card fh-card">
-      <button id="friends-close">×</button>
-      <div class="modal-title">👥 Friends</div>
-      <div id="friends-hud-list"></div>
-      <div class="fh-visit">
-        <input id="npub-input" type="text" placeholder="visit any farm — npub or hex pubkey" autocomplete="off" spellcheck="false" />
-        <button id="load-farm">go</button>
+    <div class="fh-panel">
+      <button class="fh-x" id="friends-close" aria-label="close"></button>
+      <button class="fh-tab" id="fh-tab-friends" data-tab="friends" aria-label="Friends"></button>
+      <button class="fh-tab" id="fh-tab-add" data-tab="add" aria-label="Add Friend"></button>
+      <div id="friends-hud-list" class="fh-content"></div>
+      <div id="fh-add-panel" class="fh-content hidden">
+        <p class="fh-add-hint">Visit any farmer's homestead — paste their npub or hex pubkey.</p>
+        <input id="npub-input" type="text" placeholder="npub1… or hex pubkey" autocomplete="off" spellcheck="false" />
+        <button id="load-farm">visit farm</button>
       </div>
     </div>
   </div>

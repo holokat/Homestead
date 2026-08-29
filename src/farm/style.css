@@ -1222,31 +1222,40 @@ body.book-open #sidebar { transform: translateX(0); }
 #friends-btn:hover { transform: scale(1.08) rotate(3deg); }
 #friends-btn.hidden { display: none; }
 
-/* ---- friends HUD panel ---- */
+/* ---- friends HUD panel (painted artwork) ---- */
 #friends-hud {
   position: fixed; inset: 0; z-index: 22;
   display: flex; align-items: center; justify-content: center;
   background: rgba(20, 12, 4, 0.5); backdrop-filter: blur(2px);
+  animation: tr-fade 0.2s ease both;
 }
 #friends-hud.hidden { display: none; }
-#friends-hud .fh-card {
-  position: relative; width: min(92vw, 440px); max-height: 78vh;
-  display: flex; flex-direction: column;
+#friends-hud .fh-panel {
+  position: relative;
+  height: min(90vh, 760px); aspect-ratio: 1024 / 1536;
+  background: url('/ui/friends-panel.png') center / contain no-repeat;
+  animation: tr-pop 0.3s cubic-bezier(0.2, 1.3, 0.4, 1) both;
 }
-#friends-hud .modal-title { margin-bottom: 10px; }
-#friends-close {
-  position: absolute; top: 8px; right: 10px; width: 30px; height: 30px;
-  border: 0; border-radius: 8px; background: rgba(120, 88, 45, 0.15);
-  color: #7a4d18; font-size: 20px; line-height: 1; cursor: pointer;
+/* invisible hotspots over the baked-in close button + the two tabs */
+#friends-hud .fh-x { position: absolute; top: 5.5%; right: 3%; width: 13%; height: 8%; background: transparent; border: 0; cursor: pointer; border-radius: 50%; }
+#friends-hud .fh-tab { position: absolute; top: 16.5%; height: 6.6%; background: transparent; border: 0; cursor: pointer; border-radius: 999px; }
+#friends-hud #fh-tab-friends { left: 16.5%; width: 31%; }
+#friends-hud #fh-tab-add { left: 49%; width: 32%; }
+/* content sits in the parchment area below the tabs */
+#friends-hud .fh-content {
+  position: absolute; left: 13.5%; right: 13.5%; top: 26%; bottom: 9%;
+  overflow-y: auto;
 }
-#friends-close:hover { background: rgba(120, 88, 45, 0.28); }
-#friends-hud-list { overflow-y: auto; flex: 1; min-height: 60px; }
-.fh-visit { display: flex; gap: 6px; margin-top: 12px; }
-.fh-visit input {
-  flex: 1; padding: 8px 10px; border-radius: 9px; border: 1px solid rgba(150, 118, 70, 0.5);
-  background: rgba(255, 250, 238, 0.7); font-size: 13px; color: #5a3f1c;
+#friends-hud .fh-content.hidden { display: none; }
+#friends-hud-list { display: block; }
+#fh-add-panel { display: flex; flex-direction: column; gap: 10px; }
+#fh-add-panel .fh-add-hint { font-size: 13px; color: #6b4a26; line-height: 1.4; margin: 4px 0; }
+#fh-add-panel input {
+  padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(150, 118, 70, 0.5);
+  background: rgba(255, 252, 244, 0.85); font-size: 14px; color: #5a3f1c;
 }
-.fh-visit #load-farm {
-  padding: 8px 16px; border-radius: 9px; border: 0; cursor: pointer; font-weight: 800;
-  background: linear-gradient(#f4d67a, #e2ba49); color: #4a3610;
+#fh-add-panel #load-farm {
+  padding: 10px 16px; border-radius: 10px; border: 0; cursor: pointer; font-weight: 800; font-size: 14px;
+  background: linear-gradient(#f4d67a, #e2ba49); color: #4a3610; box-shadow: 0 3px 0 #b8912f;
 }
+#fh-add-panel #load-farm:active { transform: translateY(2px); box-shadow: 0 1px 0 #b8912f; }

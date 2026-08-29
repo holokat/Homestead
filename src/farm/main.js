@@ -1925,7 +1925,7 @@ function onSlotClick(kind, id, e) {
               if (testMode && !game.canBuy(item)) { game.owned.push(item.id); game.save(); }
               else if (!game.buy(item)) { toast('not enough coins', false); return; }
               audio.playSfx('loot_coin', 0.5);
-              if (!testMode && item.price) floatAtCoins(`-${item.price}${COIN}`);
+              if (item.price) floatAtCoins(`-${item.price}${COIN}`);
               toast(`bought <b>${item.icon} ${esc(item.name)}</b>!`);
               renderHud();
               renderCoins();
@@ -2696,7 +2696,12 @@ function beginPlacement(kind, type, opts, existingUid = null) {
         renderHud();
         return;
       }
-      if (!testMode && price) { game.addCoins(-price); renderCoins(); floatAtCoins(`-${price}${COIN}`); audio.playSfx('loot_coin', 0.45); }
+      // always SHOW the spend (coin sound + floating -price) so the cost is felt;
+      // only actually deduct outside test mode (test mode = unlimited gold)
+      if (price) {
+        if (!testMode) game.addCoins(-price);
+        renderCoins(); floatAtCoins(`-${price}${COIN}`); audio.playSfx('loot_coin', 0.45);
+      }
     }
     const entry = { uid: existingUid || `p${Date.now()}${Math.floor(Math.random() * 999)}`, kind, type, x: pos.x, z: pos.z, rot: pos.rot, opts };
     // real structures take time to raise — a construction site stands in
@@ -3385,11 +3390,19 @@ for (const b of document.querySelectorAll('#compose-tmpls .tmpl')) {
 // always open, even with zero friends (it shows a "no follows yet" prompt)
 function openFriendsHud() {
   $('#friends-hud').classList.remove('hidden');
+  friendsTab('friends'); // always land on the list
   try { renderFriends(); } catch (e) { console.warn('friends render failed', e); }
 }
 function closeFriendsHud() { $('#friends-hud').classList.add('hidden'); }
+function friendsTab(which) {
+  $('#friends-hud-list').classList.toggle('hidden', which !== 'friends');
+  $('#fh-add-panel').classList.toggle('hidden', which !== 'add');
+  if (which === 'add') setTimeout(() => $('#npub-input')?.focus(), 30);
+}
 $('#friends-btn').addEventListener('click', openFriendsHud);
 $('#friends-close').addEventListener('click', closeFriendsHud);
+$('#fh-tab-friends').addEventListener('click', () => friendsTab('friends'));
+$('#fh-tab-add').addEventListener('click', () => friendsTab('add'));
 $('#friends-hud').addEventListener('mousedown', (e) => { if (e.target.id === 'friends-hud') closeFriendsHud(); });
 // visiting a friend's farm closes the HUD so you can see the farm
 $('#friends-hud-list').addEventListener('click', (e) => { if (e.target.closest('[data-pk]')) closeFriendsHud(); });
@@ -3483,6 +3496,7 @@ function tryLoad() {
   if (!hex) { toast('that does not look like an npub or hex pubkey', false); return; }
   $('#npub-input').value = '';
   document.body.classList.remove('book-open');
+  $('#friends-hud')?.classList.add('hidden');
   loadFarm(hex);
 }
 $('#load-farm').addEventListener('click', tryLoad);
