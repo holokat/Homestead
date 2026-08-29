@@ -555,6 +555,13 @@ export function updateAnimal(rec, now) {
   const step = Math.min(dist, speed * dt);
   g.position.x += (_d.x / dist) * step;
   g.position.z += (_d.z / dist) * step;
+  // a closed pen truly CONTAINS its residents — hard-clamp the position, not just
+  // the target, so a penned animal can never drift out through the fence
+  if (rec.bounds) {
+    const m = ANIMAL_RADIUS[rec.type] || 1;
+    g.position.x = Math.min(rec.bounds.maxX - m, Math.max(rec.bounds.minX + m, g.position.x));
+    g.position.z = Math.min(rec.bounds.maxZ - m, Math.max(rec.bounds.minZ + m, g.position.z));
+  }
 
   // Face travel direction. A yaw of θ about +y maps the model's +x nose to
   // (cosθ, 0, −sinθ) in world XZ, so to point the nose along (dx, dz) we need

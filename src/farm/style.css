@@ -1210,3 +1210,43 @@ body.book-open #sidebar { transform: translateX(0); }
 #bow-viewmodel .bvm-wrap.drawing { transform: translate(-4%, 6%) scale(1.06) rotate(-2deg); }
 /* loose: a quick forward recoil, then it settles back on the base transition */
 #bow-viewmodel .bvm-wrap.released { transition: transform 0.12s ease-out; transform: translate(4%, -5%) scale(0.97) rotate(1.5deg); }
+
+/* ---- friends HUD button (left of the share-news button) ---- */
+#friends-btn {
+  position: fixed; bottom: 20px; right: 162px; z-index: 11;
+  width: 118px; height: 104px; padding: 0; border: 0;
+  background: url('/ui/friends-btn.png') no-repeat center / contain;
+  filter: drop-shadow(0 3px 8px rgba(40, 25, 8, 0.3));
+  cursor: pointer; transition: transform 0.13s;
+}
+#friends-btn:hover { transform: scale(1.08) rotate(3deg); }
+#friends-btn.hidden { display: none; }
+
+/* ---- friends HUD panel ---- */
+#friends-hud {
+  position: fixed; inset: 0; z-index: 22;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(20, 12, 4, 0.5); backdrop-filter: blur(2px);
+}
+#friends-hud.hidden { display: none; }
+#friends-hud .fh-card {
+  position: relative; width: min(92vw, 440px); max-height: 78vh;
+  display: flex; flex-direction: column;
+}
+#friends-hud .modal-title { margin-bottom: 10px; }
+#friends-close {
+  position: absolute; top: 8px; right: 10px; width: 30px; height: 30px;
+  border: 0; border-radius: 8px; background: rgba(120, 88, 45, 0.15);
+  color: #7a4d18; font-size: 20px; line-height: 1; cursor: pointer;
+}
+#friends-close:hover { background: rgba(120, 88, 45, 0.28); }
+#friends-hud-list { overflow-y: auto; flex: 1; min-height: 60px; }
+.fh-visit { display: flex; gap: 6px; margin-top: 12px; }
+.fh-visit input {
+  flex: 1; padding: 8px 10px; border-radius: 9px; border: 1px solid rgba(150, 118, 70, 0.5);
+  background: rgba(255, 250, 238, 0.7); font-size: 13px; color: #5a3f1c;
+}
+.fh-visit #load-farm {
+  padding: 8px 16px; border-radius: 9px; border: 0; cursor: pointer; font-weight: 800;
+  background: linear-gradient(#f4d67a, #e2ba49); color: #4a3610;
+}

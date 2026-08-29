@@ -878,23 +878,25 @@ function askInput(title, fields) {
 }
 
 function renderFriends() {
-  const wrap = $('#sb-friends-wrap');
-  if (!myPk) { wrap.classList.add('hidden'); return; }
-  wrap.classList.remove('hidden');
+  const list = $('#friends-hud-list');
+  if (!list) return;
+  // the friends button only makes sense once you're signed in
+  $('#friends-btn')?.classList.toggle('hidden', !myPk);
+  if (!myPk) { list.innerHTML = ''; return; }
   let html = '';
   if (myPk !== farmerPk) {
     html += `<button class="sb-friend home" data-pk="${myPk}">⌂ back to my farm</button>`;
   }
   if (!friendPks.length) {
     html += '<div class="friend-none">no follows found yet — visit anyone by pubkey below</div>';
-    $('#sb-friends').innerHTML = html;
+    list.innerHTML = html;
     wireFriendClicks();
     return;
   }
   const showSearch = friendPks.length > 8;
   if (showSearch) html += `<input class="friend-search" id="friend-search" placeholder="🔍 search ${friendPks.length} friends…" value="${esc(friendSearch)}" />`;
   html += '<div class="friend-grid" id="friend-grid">' + friendGridHtml() + '</div>';
-  $('#sb-friends').innerHTML = html;
+  list.innerHTML = html;
   const search = $('#friend-search');
   if (search) {
     search.addEventListener('input', () => {
@@ -1923,6 +1925,7 @@ function onSlotClick(kind, id, e) {
               if (testMode && !game.canBuy(item)) { game.owned.push(item.id); game.save(); }
               else if (!game.buy(item)) { toast('not enough coins', false); return; }
               audio.playSfx('loot_coin', 0.5);
+              if (!testMode && item.price) floatAtCoins(`-${item.price}${COIN}`);
               toast(`bought <b>${item.icon} ${esc(item.name)}</b>!`);
               renderHud();
               renderCoins();
@@ -2317,6 +2320,7 @@ function wireMerchant(body) {
         return;
       }
       audio.playSfx('loot_coin', 0.55);
+      if (item.price) floatAtCoins(`-${item.price}${COIN}`);
       game.bumpStat('merchant');
       toast(`✨ bought ${item.icon} <b>${esc(item.name)}</b>! find it in the 🎪 Decor tab`);
       renderMarket();
@@ -2692,7 +2696,7 @@ function beginPlacement(kind, type, opts, existingUid = null) {
         renderHud();
         return;
       }
-      if (!testMode && price) { game.addCoins(-price); renderCoins(); floatAtCoins(`-${price}${COIN}`); }
+      if (!testMode && price) { game.addCoins(-price); renderCoins(); floatAtCoins(`-${price}${COIN}`); audio.playSfx('loot_coin', 0.45); }
     }
     const entry = { uid: existingUid || `p${Date.now()}${Math.floor(Math.random() * 999)}`, kind, type, x: pos.x, z: pos.z, rot: pos.rot, opts };
     // real structures take time to raise — a construction site stands in
@@ -3376,6 +3380,15 @@ for (const b of document.querySelectorAll('#compose-tmpls .tmpl')) {
     $('#compose-text').focus();
   });
 }
+
+// ---- friends HUD ----
+function openFriendsHud() { renderFriends(); $('#friends-hud').classList.remove('hidden'); }
+function closeFriendsHud() { $('#friends-hud').classList.add('hidden'); }
+$('#friends-btn').addEventListener('click', openFriendsHud);
+$('#friends-close').addEventListener('click', closeFriendsHud);
+$('#friends-hud').addEventListener('mousedown', (e) => { if (e.target.id === 'friends-hud') closeFriendsHud(); });
+// visiting a friend's farm closes the HUD so you can see the farm
+$('#friends-hud-list').addEventListener('click', (e) => { if (e.target.closest('[data-pk]')) closeFriendsHud(); });
 
 $('#compose-btn').addEventListener('click', () => {
   $('#compose-modal').classList.remove('hidden');

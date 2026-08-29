@@ -685,8 +685,15 @@ export class Homestead {
     this.scene.add(this.houseHit);
   }
 
-  // relocate the farmhouse (and its hit column) to a new ground spot
+  // relocate the farmhouse (and its hit column) to a new ground spot — but keep
+  // the whole house INSIDE the fenced farm; it can't be dragged out into the wild
   moveHouse(x, z) {
+    const m = 7; // house half-footprint kept clear of the fence
+    const f = this.fence;
+    if (f) {
+      x = Math.max(-f.x + m, Math.min(f.x - m, x));
+      z = Math.max(f.zBack + m, Math.min(f.zFront - m, z));
+    }
     this.farmhousePos.set(x, 0, z);
     if (this.farmhouseGroup) this.farmhouseGroup.position.copy(this.farmhousePos);
     if (this.houseHit) this.houseHit.position.set(x, 4, z);
