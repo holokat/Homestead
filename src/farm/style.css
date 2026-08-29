@@ -1259,3 +1259,16 @@ body.book-open #sidebar { transform: translateX(0); }
   background: linear-gradient(#f4d67a, #e2ba49); color: #4a3610; box-shadow: 0 3px 0 #b8912f;
 }
 #fh-add-panel #load-farm:active { transform: translateY(2px); box-shadow: 0 1px 0 #b8912f; }
+
+/* ---- perimeter fence health indicator ---- */
+#fence-hud {
+  position: fixed; top: 56px; left: 50%; transform: translateX(-50%); z-index: 15;
+  padding: 6px 15px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  background: rgba(120, 88, 45, 0.92); color: #f6e7bf; font-size: 13px; font-weight: 800;
+  box-shadow: 0 3px 9px rgba(40, 25, 8, 0.4); border: 1px solid rgba(0, 0, 0, 0.18);
+}
+#fence-hud.hidden { display: none; }
+#fence-hud.cracked { background: rgba(184, 120, 38, 0.94); }
+#fence-hud.broken { background: rgba(196, 60, 45, 0.96); animation: fh-pulse 1.2s ease-in-out infinite; }
+#fence-hud .fh-cta { opacity: 0.82; font-weight: 600; font-size: 11px; margin-left: 4px; }
+@keyframes fh-pulse { 0%,100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.05); } }

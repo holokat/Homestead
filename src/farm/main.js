@@ -1001,6 +1001,10 @@ function buildFarmScene() {
     onDockClick: tryFish,
     onFishResult: handleFishResult,
     onDeerResult: handleHuntResult,
+    fenceHP: game.fenceHP,
+    onFenceClick: repairFenceUI,
+    onFenceState: handleFenceState,
+    onAnimalLost: handleAnimalLost,
     onProductReady: handleProductReady,
     onConstructionKnock: () => audio.playSfx('construction-hammer-under-way', 0.4),
     onHouseClick: handleHouseClick,
@@ -2465,6 +2469,57 @@ function handleFishResult(fish) {
     toast(`🎣 caught ${fish.icon} <b>${esc(fish.name)}</b> · ${fish.sell}${COIN} at the market`);
   }
   renderResChips();
+}
+
+// ---- perimeter fence health ----
+function updateFenceHud(hp, state) {
+  if (hp == null) hp = game.fenceHP;
+  let el = document.getElementById('fence-hud');
+  if (hp >= 100) { if (el) el.classList.add('hidden'); return; }
+  if (!el) {
+    el = document.createElement('div'); el.id = 'fence-hud';
+    el.addEventListener('click', repairFenceUI);
+    document.body.appendChild(el);
+  }
+  el.classList.remove('hidden');
+  const broken = hp <= 0;
+  el.className = broken ? 'broken' : hp < 55 ? 'cracked' : '';
+  el.innerHTML = broken
+    ? `🪵 <b>Fence broken!</b> <span class="fh-cta">click to rebuild</span>`
+    : `🪵 Fence <b>${Math.max(0, Math.round(hp))}%</b> <span class="fh-cta">click to mend</span>`;
+}
+function handleFenceState(hp, state, changed) {
+  game.fenceHP = hp; // keep the save in sync
+  updateFenceHud(hp, state);
+  if (changed) {
+    game.save();
+    if (state === 'broken') { toast('⚠️ your fence has fallen! Animals can wander off and predators can get in — click the fence to rebuild it.', false); audio.playSfx('denied', 0.3); }
+    else if (state === 'cracked') toast('🪵 your fence is weathering — mend it before it breaks (click the fence).', false);
+  }
+}
+// a predator killed one of your animals — drop it from the save
+const ANIMAL_ICON = { chicken: '🐔', duck: '🦆', sheep: '🐑', goat: '🐐', pig: '🐖', cow: '🐄', horse: '🐴', rabbit: '🐇', cat: '🐈', dog: '🐕', rooster: '🐓', bunny: '🐇' };
+function handleAnimalLost(id, type, predator) {
+  const uid = placedRuntime.get(id);
+  if (uid) { game.placed = game.placed.filter((e) => e.uid !== uid); placedRuntime.delete(id); }
+  game.save();
+  const pIcon = predator === 'wolf' ? '🐺' : '🦊';
+  bigMoment(`${pIcon} a ${predator} took your ${ANIMAL_ICON[type] || '🐾'} ${esc(type)}! Keep animals in a closed pen to protect them.`);
+  audio.playSfx('denied', 0.4);
+}
+
+function repairFenceUI() {
+  if (!requireOwner()) return;
+  if (game.fenceHP >= 100) return;
+  const cost = 15;
+  if (!testMode && game.coins < cost) { toast(`🔨 mending the fence costs ${cost}${COIN}`, false); audio.playSfx('denied', 0.25); return; }
+  if (!testMode) game.addCoins(-cost);
+  renderCoins(); floatAtCoins(`-${cost}${COIN}`); audio.playSfx('loot_coin', 0.4);
+  farm.repairFence();
+  game.fenceHP = 100; game.save();
+  audio.playSfx('construction', 0.5);
+  toast('🔨 the fence is mended — good as new!');
+  updateFenceHud();
 }
 
 // a bow shot resolved: a clean kill drops meat; a miss bolts the quarry; a bear

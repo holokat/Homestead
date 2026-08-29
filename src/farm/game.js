@@ -26,6 +26,7 @@ export class Game {
     this.houseOffset = null; // {x,z} if the player relocated the house
     this.windmillRot = null; // windmill facing (radians); null = default
     this.paths = []; // [{x,z,type}] paved path tiles
+    this.fenceHP = 100; // perimeter fence health (0-100)
     this.theme = 'meadow';
     this.biome = null;    // set once via the map picker
     this.coins = STARTER_COINS;
@@ -84,6 +85,7 @@ export class Game {
     this.houseOffset = data.houseOffset && Number.isFinite(data.houseOffset.x) ? data.houseOffset : null;
     this.windmillRot = typeof data.windmillRot === 'number' ? data.windmillRot : null;
     this.paths = Array.isArray(data.paths) ? data.paths : [];
+    this.fenceHP = typeof data.fenceHP === 'number' ? data.fenceHP : 100;
     this.theme = data.theme || 'meadow';
     this.biome = data.biome || null;
     this.coins = data.coins ?? STARTER_COINS;
@@ -115,7 +117,7 @@ export class Game {
   snapshot() {
     return {
       v: SAVE_VERSION, tier: this.tier, plots: this.plots, placed: this.placed,
-      harvested: this.harvested, signText: this.signText, signHidden: this.signHidden, houseRot: this.houseRot, houseOffset: this.houseOffset, windmillRot: this.windmillRot, paths: this.paths,
+      harvested: this.harvested, signText: this.signText, signHidden: this.signHidden, houseRot: this.houseRot, houseOffset: this.houseOffset, windmillRot: this.windmillRot, paths: this.paths, fenceHP: this.fenceHP,
       theme: this.theme, biome: this.biome, coins: this.coins, inventory: this.inventory,
       owned: this.owned, jobs: this.jobs, zapCursor: this.zapCursor, giftCursor: this.giftCursor,
       orders: this.orders, nextOrderAt: this.nextOrderAt,

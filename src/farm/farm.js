@@ -21,6 +21,7 @@ import { buildCritter } from './critter_models.js';
 import { buildCamp } from './camp_models.js';
 import { buildFishTrap } from './fishtrap_models.js';
 import { buildBowViewmodel } from './bow_viewmodel.js';
+import { buildPredator } from './predator_models.js';
 import { buildGLB, glbReady } from './glb_models.js';
 
 // campsite decor ids (catalog) → camp_models builder ids
@@ -114,7 +115,7 @@ function buildingGroupFor(type, opts) {
 }
 
 export class Homestead {
-  constructor(container, { cols, rows, tier = 1, themeId = 'meadow', signText, hideSign = false, farmhouseLevel = 1, onPlotHover, onPlotClick, onObjectClick, onObjectHover, onSignClick, onAnimalSound, onMarketClick, onDockClick, onFishResult, onProductReady, onConstructionKnock, onHouseClick, houseRot, houseOffset, onWindmillClick, windmillRot, onGateToggle, onDeerResult, onBowState } = {}) {
+  constructor(container, { cols, rows, tier = 1, themeId = 'meadow', signText, hideSign = false, farmhouseLevel = 1, onPlotHover, onPlotClick, onObjectClick, onObjectHover, onSignClick, onAnimalSound, onMarketClick, onDockClick, onFishResult, onProductReady, onConstructionKnock, onHouseClick, houseRot, houseOffset, onWindmillClick, windmillRot, onGateToggle, onDeerResult, onBowState, fenceHP, onFenceClick, onFenceState, onAnimalLost } = {}) {
     this.container = container;
     this.cols = cols;
     this.rows = rows;
@@ -140,6 +141,12 @@ export class Homestead {
     this.onGateToggle = onGateToggle || (() => {});
     this.onDeerResult = onDeerResult || (() => {});
     this.onBowState = onBowState || (() => {});
+    this.onFenceClick = onFenceClick || (() => {});
+    this.onFenceState = onFenceState || (() => {});
+    this.fenceHP = typeof fenceHP === 'number' ? fenceHP : 100; // 0..100 perimeter health
+    this.hoveredFence = false;
+    this.onAnimalLost = onAnimalLost || (() => {});
+    this.predators = []; // foxes (day) & wolves (night) that hunt un-penned animals
     // hunting: bow tool aims at deer; hit odds fall off with camera distance
     this.huntMode = false;
     this.hoveredDeer = null;
@@ -493,27 +500,186 @@ export class Homestead {
       [[-GATE_HALF, fzF], [-fx, fzF]],
       [[-fx, fzF], [-fx, fzB]],
     ];
+    this.fenceGroup = new THREE.Group();
+    this.scene.add(this.fenceGroup);
+    this.fencePosts = []; // { post, cap, baseRotZ } — tilted/knocked as it weathers
+    this.fenceRails = []; // { rail, baseY }
+    this.fenceHits = [];  // invisible click zones for repair
     for (const [[ax, az], [bx, bz]] of runs) {
       const segs = Math.max(1, Math.round(Math.hypot(bx - ax, bz - az) / 8));
       for (let i = 0; i <= segs; i++) {
         const t = i / segs;
         const post = cyl(0.24, 0.3, 2.7, Math.random() > 0.5 ? P.wood : P.woodLight, 6);
         post.position.set(ax + (bx - ax) * t, 1.15, az + (bz - az) * t);
-        post.rotation.z = (Math.random() - 0.5) * 0.08;
-        this.scene.add(post);
+        const baseRotZ = (Math.random() - 0.5) * 0.08;
+        post.rotation.z = baseRotZ;
+        this.fenceGroup.add(post);
         const cap = ball(0.26, P.woodDark, 0.6, 6);
         cap.position.set(post.position.x, 2.55, post.position.z);
-        this.scene.add(cap);
+        this.fenceGroup.add(cap);
+        this.fencePosts.push({ post, cap, baseRotZ, jitter: Math.random() });
       }
       for (const y of [1.9, 1.0]) {
         const len = Math.hypot(bx - ax, bz - az);
         const rail = box(len, 0.22, 0.22, y > 1.5 ? P.woodLight : P.wood);
         rail.position.set((ax + bx) / 2, y, (az + bz) / 2);
         rail.rotation.y = -Math.atan2(bz - az, bx - ax);
-        this.scene.add(rail);
+        this.fenceGroup.add(rail);
+        this.fenceRails.push({ rail, baseY: y });
       }
+      // an invisible click-zone along this run so the player can repair the fence
+      const midx = (ax + bx) / 2, midz = (az + bz) / 2;
+      const len = Math.hypot(bx - ax, bz - az);
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(len + 1, 3.2, 1.6), new THREE.MeshBasicMaterial({ visible: false }));
+      hit.position.set(midx, 1.4, midz);
+      hit.rotation.y = -Math.atan2(bz - az, bx - ax);
+      hit.userData.fence = true;
+      this.scene.add(hit);
+      this.fenceHits.push(hit);
     }
     this._buildGate(0, fzF, GATE_HALF);
+    this._applyFenceDamage(); // reflect the current HP on the freshly-built fence
+  }
+
+  // reflect fence HP on the posts/rails: sound at full, sagging & tilted as it
+  // weathers, knocked-over gaps when broken (HP 0)
+  _applyFenceDamage() {
+    const hp = this.fenceHP == null ? 100 : this.fenceHP;
+    const wear = 1 - hp / 100; // 0 fresh → 1 broken
+    if (this.fencePosts) {
+      for (const fp of this.fencePosts) {
+        const lean = wear * (0.12 + fp.jitter * 0.5);
+        const broken = hp <= 0 && fp.jitter > 0.55; // some posts fall over when broken
+        fp.post.rotation.z = fp.baseRotZ + (broken ? (fp.jitter > 0.8 ? 1.3 : lean) : lean);
+        fp.post.position.y = broken ? 0.5 : 1.15;
+        fp.cap.visible = !broken;
+        const col = wear > 0.5 ? 0x6a5535 : null; // greying as it weathers
+        if (col && fp.post.material.color) fp.post.material.color.setHex(col);
+      }
+    }
+    if (this.fenceRails) {
+      for (const fr of this.fenceRails) {
+        fr.rail.position.y = fr.baseY - wear * 0.25;
+        fr.rail.rotation.z = (hp <= 0 ? (fr.baseY > 1.5 ? 0.18 : -0.12) : wear * 0.05);
+        fr.rail.visible = !(hp <= 0 && fr.baseY < 1.5); // lower rails drop off when broken
+      }
+    }
+  }
+
+  get fenceBroken() { return (this.fenceHP == null ? 100 : this.fenceHP) <= 0; }
+
+  // repair the whole perimeter back to full
+  repairFence() {
+    this.fenceHP = 100;
+    this._applyFenceDamage();
+  }
+
+  // knock the fence down a bit (bear stomp, or just call for weathering)
+  damageFence(amount) {
+    this.fenceHP = Math.max(0, (this.fenceHP == null ? 100 : this.fenceHP) - amount);
+    this._applyFenceDamage();
+  }
+
+  // ---- predators: foxes (day) & wolves (night) hunt un-penned animals --------
+  _spawnPredator(type) {
+    const model = buildPredator(type);
+    model.scale.setScalar(type === 'wolf' ? 1.0 : 1.15);
+    const zc = (this.zFront + this.zBack) / 2;
+    const a = Math.random() * Math.PI * 2, rr = this.W * 0.96; // enter from the treeline
+    model.position.set(Math.cos(a) * rr, 0, zc + Math.sin(a) * rr);
+    model.userData.hunt = {
+      type, cz: zc, speed: type === 'wolf' ? 6.0 : 4.4, killDist: 1.8,
+      legs: model.userData.legs || [], head: model.userData.head, tail: model.userData.tail,
+      state: 'prowl', heading: Math.random() * Math.PI * 2, until: 2500 + Math.random() * 3000,
+      // foxes raid only occasionally; night wolves are hungrier
+      t0: 0, ph: Math.random() * 10,
+      nextHunt: (this._lastNow || performance.now()) + (type === 'wolf' ? 4000 + Math.random() * 6000 : 30000 + Math.random() * 45000),
+    };
+    this.scene.add(model);
+    this.predators.push(model);
+    return model;
+  }
+
+  _removePredator(p) {
+    this.scene.remove(p);
+    const i = this.predators.indexOf(p);
+    if (i >= 0) this.predators.splice(i, 1);
+  }
+
+  _nearestPrey(px, pz) {
+    let best = null, bd = Infinity;
+    for (const [id, ar] of this.animalRecs) {
+      if (ar.bounds) continue; // safe inside a closed pen
+      const g = ar.group;
+      const dd = Math.hypot(g.position.x - px, g.position.z - pz);
+      if (dd < bd) { bd = dd; best = { id, ar }; }
+    }
+    return best;
+  }
+
+  _killPrey(pred, id, ar) {
+    const rec = this.placed.get(id);
+    if (rec) { this.scene.remove(rec.group); if (rec.hit) this.scene.remove(rec.hit); this.placed.delete(id); }
+    this.animalRecs.delete(id);
+    this._spawnBlood(ar.group.position.x, ar.group.position.z, 0.5);
+    try { this.onAnimalLost(id, ar.type, pred.userData.hunt.type); } catch {}
+  }
+
+  _updatePredators(now) {
+    const night = this.dayFactor < 0.32;
+    // wolves stalk the farm at night, then melt back into the trees at dawn
+    if (night) {
+      if (!this._nextWolf) this._nextWolf = now + 6000;
+      const wolves = this.predators.reduce((n, p) => n + (p.userData.hunt.type === 'wolf'), 0);
+      if (wolves < 3 && now >= this._nextWolf && this.animalRecs.size > 0) {
+        this._spawnPredator('wolf'); this._nextWolf = now + 14000 + Math.random() * 20000;
+      }
+    } else {
+      this._nextWolf = 0;
+      for (const p of [...this.predators]) if (p.userData.hunt.type === 'wolf') this._removePredator(p);
+    }
+    const dt = Math.min(0.05, (now - (this._predNow || now)) / 1000);
+    this._predNow = now;
+    for (const p of [...this.predators]) {
+      const h = p.userData.hunt, gp = p.position;
+      h.t0 += dt * 1000;
+      if (h.state === 'prowl' && now >= h.nextHunt) {
+        const prey = this._nearestPrey(gp.x, gp.z);
+        if (prey) { h.state = 'stalk'; h.targetId = prey.id; } else h.nextHunt = now + 5000 + Math.random() * 8000;
+      }
+      if (h.state === 'stalk') {
+        const ar = this.animalRecs.get(h.targetId);
+        if (!ar || ar.bounds) { h.state = 'flee'; h.fleeUntil = now + 3500; }
+        else {
+          const tx = ar.group.position.x, tz = ar.group.position.z;
+          h.heading = Math.atan2(tz - gp.z, tx - gp.x);
+          if (Math.hypot(tx - gp.x, tz - gp.z) < h.killDist) {
+            this._killPrey(p, h.targetId, ar);
+            h.state = 'flee'; h.fleeUntil = now + 3200;
+            h.nextHunt = now + (h.type === 'wolf' ? 12000 + Math.random() * 12000 : 60000 + Math.random() * 60000);
+          }
+        }
+      } else if (h.state === 'flee') {
+        if (now >= h.fleeUntil) {
+          if (h.type === 'wolf') { this._removePredator(p); continue; }
+          h.state = 'prowl'; h.nextHunt = now + 8000 + Math.random() * 12000;
+        } else h.heading = Math.atan2(gp.z - h.cz, gp.x); // bolt outward to the trees
+      } else { // prowl
+        h.heading += (Math.random() - 0.5) * 0.08;
+        if (h.t0 > h.until) { h.t0 = 0; h.until = 2500 + Math.random() * 3000; h.heading = Math.random() * Math.PI * 2; }
+      }
+      const spd = (h.state === 'stalk' || h.state === 'flee') ? h.speed : h.speed * 0.45;
+      gp.x += Math.cos(h.heading) * spd * dt;
+      gp.z += Math.sin(h.heading) * spd * dt;
+      p.rotation.y = Math.atan2(-Math.sin(h.heading), Math.cos(h.heading));
+      const gait = h.state === 'prowl' ? 150 : 80;
+      const swing = Math.sin(now / gait + h.ph) * (h.state === 'prowl' ? 0.4 : 0.75);
+      if (h.legs[0]) h.legs[0].rotation.x = swing;
+      if (h.legs[3]) h.legs[3].rotation.x = swing;
+      if (h.legs[1]) h.legs[1].rotation.x = -swing;
+      if (h.legs[2]) h.legs[2].rotation.x = -swing;
+      if (h.tail) h.tail.rotation.z = Math.sin(now / 300 + h.ph) * 0.15;
+    }
   }
 
   // the front gate: arched posts, a lantern, and two picket leaves that
@@ -1720,6 +1886,9 @@ export class Homestead {
       } else {
         addQuarry(buildCritter('bear'), 'bear', null, 1.3);
       }
+      // a fox prowls by day; wolves join at night (they hunt un-penned animals)
+      this.predators = [];
+      this._spawnPredator('fox');
     }
 
     // a POD of dolphins cruising the open water together — mostly submerged,
@@ -2337,7 +2506,8 @@ export class Homestead {
       if (this.hoveredDock) { this.onDockClick(); return; }
       if (this.hoveredHouse) { this.onHouseClick(); return; }
       if (this.hoveredWindmill) { this.onWindmillClick(); return; }
-      if (this.hoveredGate) { this.toggleGate(); }
+      if (this.hoveredGate) { this.toggleGate(); return; }
+      if (this.hoveredFence) { this.onFenceClick(); }
     });
   }
 
@@ -2369,8 +2539,12 @@ export class Homestead {
       }
     }
 
-    // ---- day / night cycle (night disabled for now: locked to full day) ----
-    const d = 1;
+    // ---- day / night cycle ----
+    const cycleMs = this.dayLengthMs || 360000; // one full day→night→day loop
+    const tphase = ((now / cycleMs) + 0.12) % 1;
+    let d = 0.5 + 0.5 * Math.cos(tphase * Math.PI * 2);
+    d = Math.max(0, Math.min(1, d * 1.4 - 0.2)); // day & night plateaus, soft dawn/dusk
+    if (this.forceDay != null) d = this.forceDay; // test / debug override
     const prevDay = this.dayFactor;
     this.dayFactor = d;
     this.sunLight.intensity = 0.14 + 2.3 * d;
@@ -2382,6 +2556,27 @@ export class Homestead {
     this.sunBall.material.opacity = d;
     this.sunGlow.material.opacity = 0.8 * d * (0.9 + 0.1 * Math.sin(now / 2400));
     this.moon.material.opacity = (1 - d) * 0.95;
+    // occasional rolling fog drifting across the valley
+    if (!this._fogNext) this._fogNext = now + 45000 + Math.random() * 90000;
+    if (now >= this._fogNext && !this._fogEvent) {
+      this._fogEvent = { start: now, dur: 26000 + Math.random() * 34000 };
+      this._fogNext = now + 150000 + Math.random() * 210000;
+    }
+    let fogFar = 700;
+    if (this._fogEvent) {
+      const ft = (now - this._fogEvent.start) / this._fogEvent.dur;
+      if (ft >= 1) this._fogEvent = null;
+      else fogFar = 700 - Math.sin(ft * Math.PI) * 560; // dip toward ~140 mid-roll
+    }
+    this.scene.fog.far = fogFar;
+    this.scene.fog.near = Math.min(90, fogFar * 0.28);
+    // fireflies at night — but only when the farm has no lanterns/fires of its own
+    if (now - (this._lightsCheck || 0) > 1500) {
+      this._lightsCheck = now; this._hasLights = false;
+      for (const rec of this.placed.values()) {
+        if (/lantern|campfire|lamp/i.test(rec.type)) { this._hasLights = true; break; }
+      }
+    }
     for (const fly of this.fireflies) {
       const night = 1 - d;
       if (night > 0.05) {
@@ -2392,7 +2587,22 @@ export class Homestead {
           Math.sin(now / 3100 + ph) * fly.userData.r * 0.7
         );
       }
-      fly.material.opacity = (0.35 + 0.55 * Math.abs(Math.sin(now / 400 + fly.userData.phase * 3))) * Math.max(0, 1 - d * 1.6);
+      fly.material.opacity = (0.35 + 0.55 * Math.abs(Math.sin(now / 400 + fly.userData.phase * 3)))
+        * Math.max(0, 1 - d * 1.6) * (this._hasLights ? 0.12 : 1);
+    }
+    // the perimeter fence slowly weathers; it shows cracks, then falls open
+    if (this.fenceHP > 0) {
+      const wdt = Math.min(0.1, (now - (this._fenceNow || now)) / 1000);
+      this._fenceNow = now;
+      this.fenceHP = Math.max(0, this.fenceHP - wdt * 0.07); // ~24 min to fully weather
+    } else { this._fenceNow = now; }
+    if (now - (this._fenceVis || 0) > 1000) {
+      this._fenceVis = now;
+      this._applyFenceDamage();
+      const st = this.fenceHP <= 0 ? 'broken' : this.fenceHP < 55 ? 'cracked' : 'ok';
+      const changed = st !== this._fenceState;
+      this._fenceState = st;
+      try { this.onFenceState(Math.round(this.fenceHP), st, changed); } catch {}
     }
     // roosters greet the dawn
     if (prevDay < 0.3 && d >= 0.3) {
@@ -2726,9 +2936,10 @@ export class Homestead {
             const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), d.rotation.y);
             const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), rm.rear);
             d.quaternion.copy(qYaw.multiply(qPitch));
-            if (rearing) { // paw the air with the front legs
+            if (rearing) { // paw the air with the front legs — and pound the fence
               if (rm.legs[0]) rm.legs[0].rotation.x = Math.sin(now / 120) * 0.6 - 0.4;
               if (rm.legs[1]) rm.legs[1].rotation.x = Math.cos(now / 120) * 0.6 - 0.4;
+              if (now - (this._bearStomp || 0) > 900) { this._bearStomp = now; this.damageFence(4); } // stomps the fence down
             }
           }
         }
@@ -2738,6 +2949,7 @@ export class Homestead {
     this._updateBowVM(now);
     this._updateArrows(now);
     this._updateBlood(now);
+    this._updatePredators(now);
     // dolphins lap the island out on the water and periodically breach in a
     // nose-up arc before splashing back down
     if (this.dolphins && this.dolphins.length) {
@@ -3050,6 +3262,9 @@ export class Homestead {
         !!this.gateHit && this.raycaster.intersectObject(this.gateHit, false).length > 0;
       this.hoveredWindmill = !plot && !objId && !this.hoveredSign && !this.hoveredMarket && !this.hoveredDock && !this.hoveredHouse && !this.hoveredGate &&
         !!this.windmillHit && this.raycaster.intersectObject(this.windmillHit, false).length > 0;
+      // the perimeter fence is hoverable (to repair it) only once it's damaged
+      this.hoveredFence = !plot && !objId && !this.hoveredSign && !this.hoveredMarket && !this.hoveredDock && !this.hoveredHouse && !this.hoveredGate && !this.hoveredWindmill
+        && this.fenceHP < 100 && !!this.fenceHits && this.raycaster.intersectObjects(this.fenceHits, false).length > 0;
       // hunting: pick the live deer under the cursor (generous target columns)
       this.hoveredDeer = null;
       if (this.huntMode && this.deer && this.deer.length) {
@@ -3069,8 +3284,8 @@ export class Homestead {
         this._lastObjHover = objId;
         this.onObjectHover(objId, this.pointerClient);
       }
-      this.renderer.domElement.style.cursor = this.huntMode ? (this.hoveredDeer ? 'crosshair' : 'crosshair')
-        : plot || objId || this.hoveredSign || this.hoveredMarket || this.hoveredDock || this.hoveredHouse || this.hoveredGate || this.hoveredWindmill ? 'pointer' : 'grab';
+      this.renderer.domElement.style.cursor = this.huntMode ? 'crosshair'
+        : plot || objId || this.hoveredSign || this.hoveredMarket || this.hoveredDock || this.hoveredHouse || this.hoveredGate || this.hoveredWindmill || this.hoveredFence ? 'pointer' : 'grab';
     }
 
     this.controls.update();
