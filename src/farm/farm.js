@@ -1190,9 +1190,9 @@ export class Homestead {
     this._placeDock(-this.W / 2 + 1.5, -this.gridHalfZ * 0.4, Math.PI, -1.8);
   }
 
-  _placeDock(x, z, facing, waterY) {
+  _placeDock(x, z, facing, waterY, groundY = 0) {
     const g = this.dockGroup;
-    this.dockPos = new THREE.Vector3(x, 0, z);
+    this.dockPos = new THREE.Vector3(x, groundY, z);
     g.position.copy(this.dockPos);
     g.rotation.y = facing;
     const cast = (g.userData.castPoint || new THREE.Vector3(10.5, 0, 0)).clone();
@@ -1733,7 +1733,7 @@ export class Homestead {
         topY: this.theme.outerTopY ?? -1.6,
         clearRadius: 14 + this.tier * 10,
         addAnimated: (fn) => this.animatedFns.push(fn),
-        setDockSpot: (x, z, facing, waterY) => this._placeDock(x, z, facing, waterY),
+        setDockSpot: (x, z, facing, waterY, groundY) => this._placeDock(x, z, facing, waterY, groundY),
         rng,
       });
     } catch (err) {

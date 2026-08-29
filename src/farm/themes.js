@@ -2259,9 +2259,10 @@ function desertOuter(ctx) {
       pad.position.set(lake.x + Math.cos(a) * rr, 0.33, lake.z + Math.sin(a) * rr);
       pad.rotation.z = rng() * Math.PI; g.add(pad);
     }
-    // relocate the fishing pier to the lake's east shore, reaching over open water
+    // pier stands at the NEAR shore (just off the farm's west bank) and reaches
+    // WEST out over the water — base grounded on the sand, not stranded mid-lake
     if (typeof ctx.setDockSpot === 'function') {
-      ctx.setDockSpot(lake.x + lakeR * 0.72, land.zC + lake.z, Math.PI, land.topY + 0.28);
+      ctx.setDockSpot(-(innerHW - 2), land.zC + lake.z, Math.PI, land.topY + 0.28, land.topY);
     }
   }
   const inLake = (wx, wz) => Math.hypot(wx - lake.x, (wz - land.zC) - lake.z) < lake.r + 4;
