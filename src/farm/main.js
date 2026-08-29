@@ -2488,13 +2488,23 @@ function updateFenceHud(hp, state) {
     ? `🪵 <b>Fence broken!</b> <span class="fh-cta">click to rebuild</span>`
     : `🪵 Fence <b>${Math.max(0, Math.round(hp))}%</b> <span class="fh-cta">click to mend</span>`;
 }
-function handleFenceState(hp, state, changed) {
-  game.fenceHP = hp; // keep the save in sync
+let fenceNotifiedAt = 100; // lowest HP we've already warned about (avoids spam)
+function handleFenceState(hp, state) {
+  game.fenceHP = hp; // keep the save in sync (the badge updates continuously)
   updateFenceHud(hp, state);
-  if (changed) {
-    game.save();
-    if (state === 'broken') { toast('⚠️ your fence has fallen! Animals can wander off and predators can get in — click the fence to rebuild it.', false); audio.playSfx('denied', 0.3); }
-    else if (state === 'cracked') toast('🪵 your fence is weathering — mend it before it breaks (click the fence).', false);
+  // warn only when crossing 50% / 25% / 10% / broken — never every tick
+  if (hp <= 0 && fenceNotifiedAt > 0) {
+    fenceNotifiedAt = 0; game.save();
+    toast('⚠️ your fence has fallen! Predators can get in — click the fence to rebuild it.', false);
+    audio.playSfx('denied', 0.3);
+    return;
+  }
+  for (const th of [50, 25, 10]) {
+    if (hp <= th && fenceNotifiedAt > th) {
+      fenceNotifiedAt = th; game.save();
+      toast(`🪵 your fence is down to ${th}% — mend it before it breaks (click the fence).`, false);
+      break;
+    }
   }
 }
 // a predator killed one of your animals — drop it from the save
@@ -2517,6 +2527,7 @@ function repairFenceUI() {
   renderCoins(); floatAtCoins(`-${cost}${COIN}`); audio.playSfx('loot_coin', 0.4);
   farm.repairFence();
   game.fenceHP = 100; game.save();
+  fenceNotifiedAt = 100; // re-arm the weathering warnings
   audio.playSfx('construction', 0.5);
   toast('🔨 the fence is mended — good as new!');
   updateFenceHud();
