@@ -2267,6 +2267,26 @@ function desertOuter(ctx) {
   }
   const inLake = (wx, wz) => Math.hypot(wx - lake.x, (wz - land.zC) - lake.z) < lake.r + 4;
 
+  // carve a basin into the terrain under the lake — out here in the dunes the
+  // ground undulates ABOVE the flat water discs and pokes sand up through them;
+  // sinking the mesh below the water surface fixes the "sand over the waterway".
+  {
+    const topMesh = land.group.children.find((c) => c.isMesh && c.geometry && c.geometry.type === 'BufferGeometry');
+    if (topMesh) {
+      const pos = topMesh.geometry.attributes.position, vv = new THREE.Vector3();
+      const floor = -0.9, rim = 7; // basin floor well below the water; 7u shore ramp
+      for (let i = 0; i < pos.count; i++) {
+        vv.fromBufferAttribute(pos, i);
+        const dd = Math.hypot(vv.x - lake.x, vv.z - lake.z);
+        if (dd > lakeR + rim) continue;
+        const target = dd <= lakeR ? floor : floor + ((dd - lakeR) / rim) * -floor;
+        if (target < vv.y) pos.setY(i, target); // only ever lower the ground
+      }
+      pos.needsUpdate = true;
+      topMesh.geometry.computeVertexNormals();
+    }
+  }
+
   // ---- dense palms clustered along the OUTER bank ----
   const outerPath = roundedRectShape(innerHW + moatW, innerHD + moatW, innerR + moatW);
   const bankPts = outerPath.getSpacedPoints(48);
