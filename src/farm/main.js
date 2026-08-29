@@ -323,11 +323,16 @@ $('#test-btn').addEventListener('click', () => {
   toast(testMode ? '🧪 test mode ON — everything unlocked + unlimited gold' : '🧪 test mode off');
   if (farmerPk) loadFarm(farmerPk);
   if (!turningOn && game) {
-    // leaving test mode — put the real coin balance back
+    // leaving test mode — drop the inflated test gold back to the REAL balance so
+    // the economy (bows cost coins, etc.) actually applies. The unlimited test
+    // value can leak into the pre-test store, so treat any huge value as a fresh 0.
     try {
-      const pre = localStorage.getItem('nostrux-pretest-coins');
-      if (pre != null) { game.coins = Number(pre) || 0; localStorage.removeItem('nostrux-pretest-coins'); game.save(); renderCoins(); }
-    } catch {}
+      const pre = Number(localStorage.getItem('nostrux-pretest-coins'));
+      game.coins = (isFinite(pre) && pre >= 0 && pre < 900_000_000) ? pre : 0;
+    } catch { game.coins = 0; }
+    try { localStorage.removeItem('nostrux-pretest-coins'); } catch {}
+    game.save();
+    renderCoins();
   }
 });
 renderTestBtn();
@@ -1520,8 +1525,11 @@ $('#pg-next').addEventListener('click', () => { slotPage += 1; renderHud(); });
   });
   renderLock();
   const applyPos = (p) => {
-    hud.style.left = p.x + 'px';
-    hud.style.top = p.y + 'px';
+    // never let the bar sit off-screen (e.g. a position saved at a taller window)
+    const x = Math.min(Math.max(p.x, -hud.offsetWidth * 0.4), window.innerWidth - hud.offsetWidth * 0.6);
+    const y = Math.min(Math.max(p.y, 4), window.innerHeight - 60);
+    hud.style.left = x + 'px';
+    hud.style.top = y + 'px';
     hud.style.bottom = 'auto';
     hud.style.transform = 'none';
   };
@@ -1587,6 +1595,77 @@ $('#pg-next').addEventListener('click', () => { slotPage += 1; renderHud(); });
     }
     drag = null;
     if (wasClick && isOwner()) renameFarmer();
+  });
+})();
+
+// generic drag for centered overlay panels (friends HUD, mission book): offsets
+// the panel from its flex-centered spot via margin, leaving the pop-in animation
+// (which drives `transform`) untouched. Grab anywhere on the panel chrome; taps
+// on buttons / scrollable content are left alone.
+function makeOverlayDraggable(panel, key, skipSel) {
+  if (!panel) return;
+  // keep the panel's centre within the viewport so it can never be lost off-screen
+  const clamp = () => {
+    off.x = Math.max(-window.innerWidth / 2 + 40, Math.min(window.innerWidth / 2 - 40, off.x));
+    off.y = Math.max(-window.innerHeight / 2 + 40, Math.min(window.innerHeight / 2 - 40, off.y));
+  };
+  let off = { x: 0, y: 0 };
+  try { const s = JSON.parse(localStorage.getItem(key) || 'null'); if (s && typeof s.x === 'number') off = s; } catch {}
+  clamp();
+  const apply = () => { panel.style.marginLeft = off.x + 'px'; panel.style.marginTop = off.y + 'px'; };
+  apply();
+  let drag = null;
+  panel.addEventListener('pointerdown', (e) => {
+    if (skipSel && e.target.closest(skipSel)) return;
+    drag = { x0: e.clientX, y0: e.clientY, ox: off.x, oy: off.y };
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    off.x = drag.ox + (e.clientX - drag.x0);
+    off.y = drag.oy + (e.clientY - drag.y0);
+    clamp();
+    apply();
+  });
+  window.addEventListener('pointerup', () => {
+    if (!drag) return;
+    try { localStorage.setItem(key, JSON.stringify(off)); } catch {}
+    drag = null;
+  });
+}
+makeOverlayDraggable(document.querySelector('#friends-hud .fh-panel'), 'nostrux-friends-pos', 'button, input, a, .fh-content');
+makeOverlayDraggable(document.querySelector('#mission-book .cb-cover'), 'nostrux-missionbook-pos', 'button, input, a, .cb-page');
+
+// draggable secondary (sub-tab) menu — remembers where you park it
+(() => {
+  const sub = document.getElementById('hud-subtabs');
+  if (!sub) return;
+  let off = { x: 0, y: 0 };
+  try { const s = JSON.parse(localStorage.getItem('nostrux-subtabs-pos') || 'null'); if (s && typeof s.x === 'number') off = s; } catch {}
+  const clamp = () => {
+    off.x = Math.max(-window.innerWidth / 2 + 60, Math.min(window.innerWidth / 2 - 60, off.x));
+    off.y = Math.max(-window.innerHeight + 120, Math.min(200, off.y));
+  };
+  clamp();
+  const apply = () => { sub.style.transform = `translateX(-50%) translate(${off.x}px, ${off.y}px)`; };
+  apply();
+  let drag = null;
+  sub.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return; // let the sub-tab buttons click
+    drag = { x0: e.clientX, y0: e.clientY, ox: off.x, oy: off.y, moved: false };
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 3) drag.moved = true;
+    off.x = drag.ox + (e.clientX - drag.x0);
+    off.y = drag.oy + (e.clientY - drag.y0);
+    clamp();
+    apply();
+  });
+  window.addEventListener('pointerup', () => {
+    if (!drag) return;
+    if (drag.moved) { try { localStorage.setItem('nostrux-subtabs-pos', JSON.stringify(off)); } catch {} }
+    drag = null;
   });
 })();
 

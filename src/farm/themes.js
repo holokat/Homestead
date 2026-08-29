@@ -2267,20 +2267,26 @@ function desertOuter(ctx) {
   }
   const inLake = (wx, wz) => Math.hypot(wx - lake.x, (wz - land.zC) - lake.z) < lake.r + 4;
 
-  // carve a basin into the terrain under the lake — out here in the dunes the
-  // ground undulates ABOVE the flat water discs and pokes sand up through them;
-  // sinking the mesh below the water surface fixes the "sand over the waterway".
+  // sink the terrain under BOTH water bodies — the moat ring and the lake — below
+  // the flat water discs. Out here in the dunes the ground undulates ABOVE the
+  // water and pokes sand up through it (the moat's far edge especially), so we
+  // carve a shallow basin around the whole farm and under the lake.
   {
     const topMesh = land.group.children.find((c) => c.isMesh && c.geometry && c.geometry.type === 'BufferGeometry');
     if (topMesh) {
       const pos = topMesh.geometry.attributes.position, vv = new THREE.Vector3();
-      const floor = -0.9, rim = 7; // basin floor well below the water; 7u shore ramp
+      const floor = -0.7;
       for (let i = 0; i < pos.count; i++) {
         vv.fromBufferAttribute(pos, i);
-        const dd = Math.hypot(vv.x - lake.x, vv.z - lake.z);
-        if (dd > lakeR + rim) continue;
-        const target = dd <= lakeR ? floor : floor + ((dd - lakeR) / rim) * -floor;
-        if (target < vv.y) pos.setY(i, target); // only ever lower the ground
+        // distance out from the farm rectangle, and to the lake centre
+        const dFarm = Math.hypot(Math.max(Math.abs(vv.x) - hw, 0), Math.max(Math.abs(vv.z) - hd, 0));
+        const dLake = Math.hypot(vv.x - lake.x, vv.z - lake.z);
+        let sink, has = false;
+        // moat apron: full depth out to the moat's outer edge, ramp back over ~18u
+        if (dFarm < moatW + bank + 18) { const s = dFarm <= moatW + bank ? floor : floor * (1 - (dFarm - (moatW + bank)) / 18); sink = s; has = true; }
+        // lake basin: full depth inside, ramp over 7u shore
+        if (dLake < lakeR + 7) { const s = dLake <= lakeR ? floor : floor * (1 - (dLake - lakeR) / 7); sink = has ? Math.min(sink, s) : s; has = true; }
+        if (has && sink < vv.y) pos.setY(i, sink); // only ever lower the ground
       }
       pos.needsUpdate = true;
       topMesh.geometry.computeVertexNormals();

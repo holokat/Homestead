@@ -294,14 +294,15 @@ body {
 .pager:hover { border-color: var(--accent); }
 
 #hud-subtabs {
-  /* floats above the frame without affecting layout — the HUD never shifts */
-  position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
-  margin-bottom: 6px;
+  /* sits just above the tab row of the frame (draggable — grab and move it) */
+  position: absolute; bottom: 82%; left: 50%; transform: translateX(-50%);
   display: flex; gap: 4px; max-width: 88vw; overflow-x: auto;
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 999px; padding: 3px 6px;
-  white-space: nowrap;
+  white-space: nowrap; cursor: grab; touch-action: none;
+  box-shadow: 0 4px 12px rgba(40, 25, 8, 0.28);
 }
+#hud-subtabs:active { cursor: grabbing; }
 #hud-subtabs.hidden { display: none; }
 #hud-subtabs button {
   border: 0; background: transparent; color: var(--dim);
@@ -1244,7 +1245,7 @@ body.book-open #sidebar { transform: translateX(0); }
   animation: tr-pop 0.3s cubic-bezier(0.2, 1.3, 0.4, 1) both;
 }
 /* invisible hotspots over the baked-in close button + the two tabs */
-#friends-hud .fh-x { position: absolute; top: 5.5%; right: 3%; width: 13%; height: 8%; background: transparent; border: 0; cursor: pointer; border-radius: 50%; }
+#friends-hud .fh-x { position: absolute; top: 3.5%; right: 0.5%; width: 18%; height: 12%; background: transparent; border: 0; cursor: pointer; border-radius: 50%; }
 #friends-hud .fh-tab { position: absolute; top: 16.5%; height: 6.6%; background: transparent; border: 0; cursor: pointer; border-radius: 999px; }
 #friends-hud #fh-tab-friends { left: 16.5%; width: 31%; }
 #friends-hud #fh-tab-add { left: 49%; width: 32%; }
