@@ -3382,7 +3382,11 @@ for (const b of document.querySelectorAll('#compose-tmpls .tmpl')) {
 }
 
 // ---- friends HUD ----
-function openFriendsHud() { renderFriends(); $('#friends-hud').classList.remove('hidden'); }
+// always open, even with zero friends (it shows a "no follows yet" prompt)
+function openFriendsHud() {
+  $('#friends-hud').classList.remove('hidden');
+  try { renderFriends(); } catch (e) { console.warn('friends render failed', e); }
+}
 function closeFriendsHud() { $('#friends-hud').classList.add('hidden'); }
 $('#friends-btn').addEventListener('click', openFriendsHud);
 $('#friends-close').addEventListener('click', closeFriendsHud);
