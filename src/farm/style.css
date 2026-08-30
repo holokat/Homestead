@@ -1308,5 +1308,21 @@ body.book-open #sidebar { transform: translateX(0); }
 #season-hud.szn-summer { background: rgba(206, 152, 54, 0.92); color: #3a2a08; }
 #season-hud.szn-fall   { background: rgba(176, 96, 44, 0.92); }
 #season-hud.szn-winter { background: rgba(108, 138, 176, 0.92); }
+
+/* ---- power supply/demand chip ---- */
+#power-chip {
+  position: fixed; top: 44px; left: 50%; transform: translateX(-50%); z-index: 14;
+  padding: 3px 12px; border-radius: 999px; white-space: nowrap;
+  font-size: 12px; font-weight: 800; color: #eaf6ff;
+  background: rgba(52, 74, 92, 0.9); box-shadow: 0 2px 8px rgba(20, 30, 40, 0.35);
+  border: 1px solid rgba(0, 0, 0, 0.15); pointer-events: none; user-select: none;
+}
+#power-chip.hidden { display: none; }
+#power-chip .pw-sup { color: #9fe6b0; }
+#power-chip .pw-dem { color: #f0c48a; }
+#power-chip .pw-sep { opacity: 0.5; margin: 0 1px; }
+#power-chip .pw-net { margin-left: 4px; }
+#power-chip.deficit { background: rgba(150, 58, 48, 0.94); animation: fh-pulse 1.4s ease-in-out infinite; }
+#power-chip.deficit .pw-net { color: #ffd6c8; }
 #fence-hud .fh-cta { opacity: 0.82; font-weight: 600; font-size: 11px; margin-left: 4px; }
 @keyframes fh-pulse { 0%,100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.05); } }

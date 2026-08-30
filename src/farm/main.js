@@ -683,6 +683,7 @@ setInterval(() => {
   if (!game || !farm || (game.readOnly && !testMode)) return;
   ensureOrders();
   updateSeasonHud();
+  tickPower();
   const now = Date.now();
   let dirty = false;
   // finished construction sites become their real buildings
@@ -1498,6 +1499,63 @@ function updateSeasonHud() {
   const wIcon = wx && WEATHER_ICON[wx] ? ` <span class="szn-wx" title="${WEATHER_LABEL[wx]}">${WEATHER_ICON[wx]}</span>` : '';
   el.className = 'szn-' + s.id;
   el.innerHTML = `${SEASON_ICON[s.id]} <b>${SEASON_LABEL[s.id]}</b> <span class="szn-temp">${Math.round(s.temperature)}°</span>${wIcon} <span class="szn-next">${SEASON_ICON[s.next]} in ${left}</span>`;
+}
+
+// ---- power economy: generators supply, lights/machines/winter-heat demand ----
+const POWER_SUPPLY = {
+  enr_windturbine: { kind: 'wind', base: 14 }, cap_giant_windmill: { kind: 'wind', base: 36 },
+  enr_solar: { kind: 'solar', base: 11 },
+  enr_hydroturbine: { kind: 'flat', base: 12 }, enr_waterwheel: { kind: 'flat', base: 6 },
+  enr_generator: { kind: 'flat', base: 8 }, enr_biomass: { kind: 'flat', base: 12 },
+  enr_geothermal: { kind: 'flat', base: 30 }, enr_autopower: { kind: 'flat', base: 40 },
+  enr_microgrid: { kind: 'flat', base: 20 }, cap_hydroelectric_dam: { kind: 'flat', base: 60 },
+};
+const LIGHT_RE = /lantern|lamp|campfire|torch|light|streetlight/i;
+let powerWarned = false;
+function tickPower() {
+  if (!game || !farm) return;
+  // windbreaks calm the wind on their lee side — feed the shelter zones to the farm
+  const shelters = game.placed.filter((e) => e.type === 'fld_windbreak')
+    .map((e) => ({ x: e.x, z: e.z, r: 13, reduction: 0.4 }));
+  farm.setShelters(shelters);
+
+  let supply = 5 + 6 * (farm.wind?.strength ?? 0.3); // the central windmill's baseline
+  let demand = 0;
+  const night = (farm.dayFactor ?? 1) < 0.42;
+  const temp = farm.temperature ?? 14;
+  for (const e of game.placed) {
+    const p = POWER_SUPPLY[e.type];
+    if (p) supply += p.kind === 'wind' ? p.base * farm.windAt(e.x, e.z)
+      : p.kind === 'solar' ? p.base * (farm.dayFactor ?? 1) : p.base;
+    if (night && LIGHT_RE.test(e.type)) demand += 2;
+    if (game.jobs && game.jobs[e.uid]) demand += 3; // a running machine draws power
+  }
+  // winter heating: house + animals need warmth as it gets cold, eased by shelter
+  if (temp < 6) {
+    const sev = Math.max(0, (6 - temp) / 11);
+    const animals = game.placed.filter((e) => ANIMALS.some((a) => a.id === e.type)).length;
+    let heat = (4 + animals * 0.8) * sev;
+    if (shelters.length) heat *= 0.68; // windbreaks cut the wind-chill heating cost
+    demand += heat;
+  }
+  const net = supply - demand;
+  game.powerState = { supply: Math.round(supply), demand: Math.round(demand), net: Math.round(net) };
+  farm.powerDeficit = net < -0.5;
+  renderPowerChip();
+  if (farm.powerDeficit && !powerWarned && (night || temp < 6)) {
+    powerWarned = true;
+    toast('🔌 power shortfall — your farm is drawing more than it makes. Add a turbine, solar, or generator.', false);
+  } else if (net >= 0) powerWarned = false;
+}
+function renderPowerChip() {
+  const ps = game.powerState; if (!ps) return;
+  // only show once the farm actually has power infrastructure or a real demand
+  if (ps.supply <= 6 && ps.demand === 0) { document.getElementById('power-chip')?.classList.add('hidden'); return; }
+  let el = document.getElementById('power-chip');
+  if (!el) { el = document.createElement('div'); el.id = 'power-chip'; el.title = 'power supply vs demand'; document.body.appendChild(el); }
+  el.classList.remove('hidden');
+  el.className = ps.net < -0.5 ? 'deficit' : '';
+  el.innerHTML = `🔌 <span class="pw-sup">${ps.supply}</span><span class="pw-sep">/</span><span class="pw-dem">${ps.demand}</span> <b class="pw-net">${ps.net >= 0 ? '+' : ''}${ps.net}</b>`;
 }
 
 function renderResChips() {

@@ -155,6 +155,8 @@ export class Homestead {
     this.temperature = 14;   // current air temperature (°C-ish)
     this.weather = { state: 'clear', intensity: 0, precip: null };
     this.wind = { dir: 0, strength: 0.3, gust: 0 };
+    this._shelters = []; // windbreak lee zones {x,z,r,reduction} that calm the wind
+    this.powerDeficit = false; // set by the power economy — dims night lights
     this.predators = []; // foxes (day) & wolves (night) that hunt un-penned animals
     // hunting: bow tool aims at deer; hit odds fall off with camera distance
     this.huntMode = false;
@@ -751,6 +753,19 @@ export class Homestead {
 
   iceState() {
     return { frozen: (this._iceFreeze || 0) >= 0.55, hole: !!this._iceHole };
+  }
+
+  // windbreaks register lee zones that calm the wind for shelter/power/heating
+  setShelters(zones) { this._shelters = Array.isArray(zones) ? zones : []; }
+
+  // effective wind strength at a world point, reduced inside windbreak shelter
+  windAt(x, z) {
+    let s = this.wind?.strength ?? 0.3;
+    for (const sh of this._shelters) {
+      const dx = x - sh.x, dz = z - sh.z;
+      if (dx * dx + dz * dz < sh.r * sh.r) s *= sh.reduction;
+    }
+    return s;
   }
 
   // chop a fishing hole through the ice — call repeatedly; returns {done,hits,need}
@@ -2848,6 +2863,7 @@ export class Homestead {
       for (const rec of this.placed.values()) {
         if (/lantern|campfire|lamp/i.test(rec.type)) { this._hasLights = true; break; }
       }
+      if (this.powerDeficit) this._hasLights = false; // no power → lights go dark, fireflies return
     }
     for (const fly of this.fireflies) {
       const night = 1 - d;
@@ -3398,10 +3414,11 @@ export class Homestead {
       const anim = rec.group.userData.anim;
       if (!anim) continue;
       if (anim.kind === 'lantern') {
+        const pw = this.powerDeficit ? 0.12 : 1; // lamps gutter out on a power shortfall
         const f = 0.9 + Math.sin(now / 90) * 0.08 + Math.sin(now / 41) * 0.05;
         const nightBoost = 0.45 + 0.75 * (1 - this.dayFactor);
-        anim.glow.material.opacity = 0.55 * f * nightBoost;
-        anim.flame.material.emissiveIntensity = 1.2 * f * nightBoost;
+        anim.glow.material.opacity = 0.55 * f * nightBoost * pw;
+        anim.flame.material.emissiveIntensity = 1.2 * f * nightBoost * pw;
       } else if (anim.kind === 'beehive') {
         anim.bees.forEach((bee, i) => {
           const a = now / 500 + i * 2.1;
