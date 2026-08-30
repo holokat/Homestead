@@ -3,8 +3,9 @@ import { Homestead } from './farm.js';
 import { Game, WATER_COOLDOWN_MS } from './game.js';
 import {
   CROPS, TREES, OBJECTS, ANIMALS, BUILDINGS, RESOURCES, GOODS,
-  reqProgress, reqLabel, findItem, placementZone, PLACE_TIPS,
+  reqProgress, reqLabel, findItem, placementZone, PLACE_TIPS, goodCategory,
 } from './catalog.js';
+import { seasonalDemand } from './seasons.js';
 import { THEMES, getTheme } from './themes.js';
 import { FarmAudio } from './audio.js';
 import { FARMHOUSE_THRESHOLDS, FARMHOUSE_NAMES, FARMHOUSE_PRICES } from './buildings.js';
@@ -36,7 +37,9 @@ for (const table of Object.values(FISH_TABLES)) {
   for (const f of table) FISH_INDEX[f.id] = f;
 }
 function goodInfo(id) {
-  return GOODS[id] || PRODUCTS[id] || FISH_INDEX[id] || { name: id, icon: '📦', sell: 1 };
+  const g = GOODS[id] || PRODUCTS[id] || FISH_INDEX[id] || { name: id, icon: '📦', sell: 1 };
+  if (g && !g._id) g._id = id; // remember the id so sellPrice can read its category
+  return g;
 }
 
 // unified item lookup across catalog + processors + merchant exclusives + infrastructure
@@ -72,7 +75,10 @@ function prestigeBonusPct() {
 
 function sellPrice(g) {
   const pct = effects.sellBonusPct + prestigeBonusPct();
-  return Math.max(1, Math.round(g.sell * (1 + pct / 100)));
+  let price = g.sell * (1 + pct / 100);
+  // seasonal demand — winter rewards food that stores, discounts fresh perishables
+  if (game) price *= seasonalDemand(goodCategory(g._id), game.season.id);
+  return Math.max(1, Math.round(price));
 }
 
 // growth-speed infrastructure (greenhouses, hydroponics, compost, labs…)
@@ -2446,7 +2452,13 @@ function sellHtml() {
   }
   let total = 0;
   const bonusNote = effects.sellBonusPct ? `<div class="mk-sub" style="display:block;color:var(--accent);font-size:10px;margin-bottom:6px">📈 your logistics add +${effects.sellBonusPct}% to all prices</div>` : '';
-  return ordersHtml() + bonusNote + entries.map(([id, n]) => {
+  const sid = game.season.id;
+  const seasonNote = sid === 'winter'
+    ? `<div class="mk-sub" style="display:block;color:#6a86b0;font-size:10px;margin-bottom:6px">❄️ winter demand: preserved &amp; hearty foods fetch a premium; fresh produce sells low</div>`
+    : sid === 'fall'
+      ? `<div class="mk-sub" style="display:block;color:#a8672e;font-size:10px;margin-bottom:6px">🍂 autumn: preserved goods are creeping up — put food by for winter</div>`
+      : '';
+  return ordersHtml() + bonusNote + seasonNote + entries.map(([id, n]) => {
     const g = goodInfo(id);
     const unit = sellPrice(g);
     total += n * unit;

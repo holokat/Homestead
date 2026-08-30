@@ -112,6 +112,16 @@ export const GOODS = {
   trapped_fish: { name: 'Trapped Fish', icon: '🐟', sell: 7 }, // passive catch from a fish trap
 };
 
+// good "kind" for seasonal market demand: winter pays a premium for food that
+// stores (preserved/hearty), and less for fresh perishables — so putting up jam
+// in autumn actually pays off.
+export function goodCategory(id) {
+  if (!id) return 'fresh';
+  if (/jam|jelly|preserv|sauce|smoked|pickled|jerky|sausage|cheese|cured/.test(id)) return 'preserved';
+  if (/soup|feast|stew|pie|bread|cake|toast|sandwich|pudding|porridge|cornbread/.test(id)) return 'hearty';
+  return 'fresh'; // raw crops, eggs, milk, fruit, raw meat & fish
+}
+
 // ---- placement zones ------------------------------------------------------
 // Where a thing may be dropped. Default is 'farm' (inside the fenced homestead).
 //   water — must sit in open water (lake): traps, nets, crab pots, piers
