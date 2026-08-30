@@ -92,10 +92,11 @@ function gableRoof(w, d, rise, color, {
   const L = Math.hypot(zE, rise - yE) + 0.15;
   for (const s of [1, -1]) {
     const p = box(w + ovX * 2, t, L, color);
+    p.userData.part = 'roof';
     p.rotation.x = s * a;
     put(g, p, 0, (rise + yE) / 2 + t * 0.35, s * zE / 2);
   }
-  if (ridge) put(g, box(w + ovX * 2 + 0.12, 0.2, 0.5, shade(color)), 0, rise + 0.08, 0);
+  if (ridge) { const rg = box(w + ovX * 2 + 0.12, 0.2, 0.5, shade(color)); rg.userData.part = 'roofRidge'; put(g, rg, 0, rise + 0.08, 0); }
   if (ends) {
     for (const s of [1, -1]) {
       const e = prism([[-d / 2, 0], [d / 2, 0], [0, rise]], 0.24, endColor);
@@ -120,14 +121,14 @@ function gambrelRoof(w, d, rise, color, { ov = 0.45, t = 0.2, endColor = null } 
   const yEv = ym - Math.tan(aL) * (xE - xm);
   const lL = Math.hypot(xE - xm, ym - yEv) + 0.2;
   for (const s of [1, -1]) {
-    const up = box(lU, t, d + ov * 2, color);
+    const up = box(lU, t, d + ov * 2, color); up.userData.part = 'roof';
     up.rotation.z = -s * aU;
     put(g, up, s * xm / 2, (rise + ym) / 2 + t * 0.35, 0);
-    const lo = box(lL, t, d + ov * 2, color);
+    const lo = box(lL, t, d + ov * 2, color); lo.userData.part = 'roof';
     lo.rotation.z = -s * aL;
     put(g, lo, s * (xm + xE) / 2, (ym + yEv) / 2 + t * 0.35, 0);
   }
-  put(g, box(0.6, 0.22, d + ov * 2 + 0.1, shade(color)), 0, rise + 0.08, 0);
+  { const rg = box(0.6, 0.22, d + ov * 2 + 0.1, shade(color)); rg.userData.part = 'roofRidge'; put(g, rg, 0, rise + 0.08, 0); }
   for (const s of [1, -1]) {
     const e = prism(
       [[-w / 2, 0], [w / 2, 0], [xm, ym], [0, rise], [-xm, ym]],
@@ -397,15 +398,46 @@ function buildManor() {
   return g;
 }
 
-export function buildFarmhouse(level) {
-  const lv = Math.max(1, Math.min(5, Math.round(level || 1)));
-  switch (lv) {
-    case 1: return buildShack();
-    case 2: return buildCabin();
-    case 3: return buildCottage();
-    case 4: return buildFarmhouseL4();
-    default: return buildManor();
+// player-choosable roof colours (null = the tier's default look)
+export const HOUSE_ROOF_OPTIONS = [
+  { id: 'default', name: 'Default', hex: null },
+  { id: 'slate', name: 'Slate', hex: 0x5a6b78 },
+  { id: 'terracotta', name: 'Terracotta', hex: 0xb0533a },
+  { id: 'moss', name: 'Moss', hex: 0x5f7a4a },
+  { id: 'navy', name: 'Navy', hex: 0x3d4d63 },
+  { id: 'plum', name: 'Plum', hex: 0x6f4258 },
+  { id: 'sand', name: 'Sand', hex: 0xcaa46a },
+  { id: 'charcoal', name: 'Charcoal', hex: 0x3a3a40 },
+  { id: 'rose', name: 'Rose', hex: 0xc47a86 },
+];
+function roofHex(id) { const o = HOUSE_ROOF_OPTIONS.find((x) => x.id === id); return o ? o.hex : null; }
+
+// recolour the tagged parts of a built house from a saved style config
+export function applyHouseStyle(group, cfg) {
+  if (!group || !cfg) return group;
+  const rh = roofHex(cfg.roof);
+  if (rh != null) {
+    group.traverse((o) => {
+      if (!o.isMesh || !o.material) return;
+      if (o.userData.part === 'roof') o.material.color.setHex(rh);
+      else if (o.userData.part === 'roofRidge') o.material.color.setHex(shade(rh));
+    });
   }
+  return group;
+}
+
+export function buildFarmhouse(level, cfg) {
+  const lv = Math.max(1, Math.min(5, Math.round(level || 1)));
+  let g;
+  switch (lv) {
+    case 1: g = buildShack(); break;
+    case 2: g = buildCabin(); break;
+    case 3: g = buildCottage(); break;
+    case 4: g = buildFarmhouseL4(); break;
+    default: g = buildManor(); break;
+  }
+  if (cfg) applyHouseStyle(g, cfg);
+  return g;
 }
 
 export const FARMHOUSE_NAMES = ['Shack', 'Log Cabin', 'Cottage', 'Farmhouse', 'Grand Homestead'];

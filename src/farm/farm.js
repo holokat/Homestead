@@ -117,7 +117,7 @@ function buildingGroupFor(type, opts) {
 }
 
 export class Homestead {
-  constructor(container, { cols, rows, tier = 1, themeId = 'meadow', signText, hideSign = false, farmhouseLevel = 1, onPlotHover, onPlotClick, onObjectClick, onObjectHover, onSignClick, onAnimalSound, onMarketClick, onDockClick, onFishResult, onProductReady, onConstructionKnock, onHouseClick, houseRot, houseOffset, onWindmillClick, windmillRot, onGateToggle, onDeerResult, onBowState, fenceHP, onFenceClick, onFenceState, onAnimalLost, getSeason } = {}) {
+  constructor(container, { cols, rows, tier = 1, themeId = 'meadow', signText, hideSign = false, farmhouseLevel = 1, onPlotHover, onPlotClick, onObjectClick, onObjectHover, onSignClick, onAnimalSound, onMarketClick, onDockClick, onFishResult, onProductReady, onConstructionKnock, onHouseClick, houseRot, houseOffset, onWindmillClick, windmillRot, onGateToggle, onDeerResult, onBowState, fenceHP, onFenceClick, onFenceState, onAnimalLost, getSeason, houseStyle } = {}) {
     this.container = container;
     this.cols = cols;
     this.rows = rows;
@@ -149,6 +149,7 @@ export class Homestead {
     this.hoveredFence = false;
     this.onAnimalLost = onAnimalLost || (() => {});
     this._getSeason = typeof getSeason === 'function' ? getSeason : null;
+    this.houseStyle = houseStyle || null; // cosmetic house customization config
     this.forceSeason = null; // debug override ('spring'|'summer'|'fall'|'winter')
     this.forceWeather = null; // debug override ('clear'|'rain'|'snow'|'storm'|'fog')
     this.season = 'spring';  // current season id (mirror of game state)
@@ -1352,7 +1353,7 @@ export class Homestead {
   _spawnFarmhouse(level) {
     if (this.farmhouseGroup) this.scene.remove(this.farmhouseGroup);
     this.farmhouseLevel = level;
-    const g = buildFarmhouse(level);
+    const g = buildFarmhouse(level, this.houseStyle);
     g.position.copy(this.farmhousePos);
     g.rotation.y = this.houseRot ?? -0.6; // default: door angled toward the crops
     this.scene.add(g);
@@ -1383,6 +1384,12 @@ export class Homestead {
     if (level === this.farmhouseLevel) return;
     this._spawnFarmhouse(level);
     this.burstAtPosition(this.farmhousePos, true);
+  }
+
+  // apply a new cosmetic style to the house and rebuild it in place
+  applyHouseCustomization(cfg) {
+    this.houseStyle = cfg || {};
+    this._spawnFarmhouse(this.farmhouseLevel);
   }
 
   _buildMarket() {

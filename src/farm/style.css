@@ -1324,5 +1324,28 @@ body.book-open #sidebar { transform: translateX(0); }
 #power-chip .pw-net { margin-left: 4px; }
 #power-chip.deficit { background: rgba(150, 58, 48, 0.94); animation: fh-pulse 1.4s ease-in-out infinite; }
 #power-chip.deficit .pw-net { color: #ffd6c8; }
+
+/* ---- house customization panel ---- */
+.hc-modal {
+  position: fixed; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center;
+  background: rgba(24, 14, 6, 0.5); backdrop-filter: blur(2px);
+}
+.hc-modal.hidden { display: none; }
+.hc-card {
+  width: min(360px, 88vw); background: #fbf3df; border: 3px solid #b98a4f; border-radius: 16px;
+  box-shadow: 0 14px 40px rgba(40, 25, 8, 0.5); padding: 16px 18px; color: #5a3f1c;
+  animation: tr-pop 0.28s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+.hc-head { font-size: 17px; font-weight: 800; display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.hc-x { border: 0; background: none; font-size: 22px; cursor: pointer; color: #8a6a3a; line-height: 1; }
+.hc-label { font-size: 12px; font-weight: 700; color: #7a5a2c; margin-bottom: 8px; }
+.hc-swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; }
+.hc-sw {
+  aspect-ratio: 1; border-radius: 10px; border: 3px solid rgba(120, 88, 45, 0.35);
+  cursor: pointer; box-shadow: inset 0 -3px 6px rgba(0, 0, 0, 0.2); transition: transform 0.1s, border-color 0.1s;
+}
+.hc-sw:hover { transform: scale(1.08); }
+.hc-sw.on { border-color: #4f9636; box-shadow: 0 0 0 2px rgba(79, 150, 54, 0.5), inset 0 -3px 6px rgba(0, 0, 0, 0.2); }
+.hc-hint { font-size: 11px; color: #9a7c4e; margin-top: 12px; }
 #fence-hud .fh-cta { opacity: 0.82; font-weight: 600; font-size: 11px; margin-left: 4px; }
 @keyframes fh-pulse { 0%,100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.05); } }

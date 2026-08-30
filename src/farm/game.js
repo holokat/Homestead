@@ -43,6 +43,7 @@ export class Game {
     this.discovered = []; // every good ever obtained (collection book)
     this.collectionBonuses = []; // collection rows already paid out
     this.housePurchased = 0; // highest farmhouse level bought with coins
+    this.house = {}; // cosmetic house customization { roof, wall, ... }
     this.claimedAt = 0;   // unix seconds; only engagement AFTER this counts
     this.seasonEpoch = 0; // ms anchor for the real-time season clock (0 = unset)
     this.stats = {};      // lifetime action counters (missions)
@@ -121,6 +122,7 @@ export class Game {
     this.discovered = data.discovered || [];
     this.collectionBonuses = data.collectionBonuses || [];
     this.housePurchased = data.housePurchased || 0;
+    this.house = (data.house && typeof data.house === 'object') ? data.house : {};
     this.claimedAt = data.claimedAt || 0;
     this.seasonEpoch = data.seasonEpoch || 0;
     this.stats = data.stats || {};
@@ -144,7 +146,7 @@ export class Game {
       orders: this.orders, nextOrderAt: this.nextOrderAt,
       lastLoginDay: this.lastLoginDay, streak: this.streak,
       discovered: this.discovered, collectionBonuses: this.collectionBonuses,
-      housePurchased: this.housePurchased,
+      housePurchased: this.housePurchased, house: this.house,
       claimedAt: this.claimedAt, seasonEpoch: this.seasonEpoch,
       stats: this.stats, missionsClaimed: this.missionsClaimed,
       baseline: this.baseline, savedAt: this.savedAt,

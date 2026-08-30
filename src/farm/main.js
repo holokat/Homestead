@@ -8,7 +8,7 @@ import {
 import { seasonalDemand } from './seasons.js';
 import { THEMES, getTheme } from './themes.js';
 import { FarmAudio } from './audio.js';
-import { FARMHOUSE_THRESHOLDS, FARMHOUSE_NAMES, FARMHOUSE_PRICES } from './buildings.js';
+import { FARMHOUSE_THRESHOLDS, FARMHOUSE_NAMES, FARMHOUSE_PRICES, HOUSE_ROOF_OPTIONS } from './buildings.js';
 import { FISH_TABLES } from './fishing.js';
 import { getThumb } from './thumbs.js';
 import { preloadModels, glbReady } from './glb_models.js';
@@ -1021,6 +1021,7 @@ function buildFarmScene() {
     onFenceState: handleFenceState,
     onAnimalLost: handleAnimalLost,
     getSeason: () => game.seasonInfo(),
+    houseStyle: game.house,
     onProductReady: handleProductReady,
     onConstructionKnock: () => audio.playSfx('construction-hammer-under-way', 0.4),
     onHouseClick: handleHouseClick,
@@ -3423,9 +3424,51 @@ function handleWindmillClick() {
   ]);
 }
 
+// ---- house customization panel ----
+function openHouseCustomizer() {
+  let el = document.getElementById('house-customizer');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'house-customizer'; el.className = 'hc-modal';
+    document.body.appendChild(el);
+    el.addEventListener('click', (e) => { if (e.target === el) el.classList.add('hidden'); });
+  }
+  renderHouseCustomizer(el);
+  el.classList.remove('hidden');
+}
+function renderHouseCustomizer(el) {
+  const cur = game.house?.roof || 'default';
+  const sw = HOUSE_ROOF_OPTIONS.map((o) => {
+    const bg = o.hex == null
+      ? 'repeating-linear-gradient(45deg,#b0533a,#b0533a 5px,#8a4030 5px,#8a4030 10px)'
+      : '#' + o.hex.toString(16).padStart(6, '0');
+    return `<button class="hc-sw ${cur === o.id ? 'on' : ''}" data-roof="${o.id}" title="${o.name}" style="background:${bg}"></button>`;
+  }).join('');
+  el.innerHTML = `<div class="hc-card">
+    <div class="hc-head">🎨 Customize House <button class="hc-x" id="hc-close">×</button></div>
+    <div class="hc-label">Roof colour</div>
+    <div class="hc-swatches">${sw}</div>
+    <div class="hc-hint">Pick a roof — it updates on your house right away.</div>
+  </div>`;
+  el.querySelector('#hc-close').onclick = () => el.classList.add('hidden');
+  for (const b of el.querySelectorAll('.hc-sw')) {
+    b.onclick = () => {
+      game.house = game.house || {};
+      game.house.roof = b.dataset.roof;
+      game.save();
+      farm.applyHouseCustomization(game.house);
+      audio.playSfx('click', 0.25);
+      renderHouseCustomizer(el);
+    };
+  }
+}
+
 function handleHouseClick() {
   if (!isOwner()) return;
   showActionPop([
+    {
+      label: '🎨 customize house',
+      fn: () => openHouseCustomizer(),
+    },
     {
       label: '✋ move house — then click the ground',
       fn: () => {
