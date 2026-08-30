@@ -13,6 +13,7 @@ import { getThumb } from './thumbs.js';
 import { preloadModels, glbReady } from './glb_models.js';
 import { preloadAnimalModels, animalModelReady } from './animal_models.js';
 import { SEASON_ICON, SEASON_LABEL } from './seasons.js';
+import { WEATHER_ICON, WEATHER_LABEL } from './weather.js';
 import { MISSIONS, MISSION_PHASES, missionProgress } from './missions.js';
 import { generatePrivateKey, getPublicKey, finishEvent, bech32Encode } from './nostr-keys.js';
 import { PROCESSORS, RECIPES, PRODUCTS, MERCHANT_ITEMS, recipesFor } from './recipes.js';
@@ -1487,8 +1488,10 @@ function updateSeasonHud() {
   const s = game.seasonInfo();
   const days = s.msToNext / 86400000;
   const left = days >= 1 ? `${days.toFixed(1)}d` : `${Math.max(1, Math.round(s.msToNext / 3600000))}h`;
+  const wx = farm?.weather?.state;
+  const wIcon = wx && WEATHER_ICON[wx] ? ` <span class="szn-wx" title="${WEATHER_LABEL[wx]}">${WEATHER_ICON[wx]}</span>` : '';
   el.className = 'szn-' + s.id;
-  el.innerHTML = `${SEASON_ICON[s.id]} <b>${SEASON_LABEL[s.id]}</b> <span class="szn-temp">${Math.round(s.temperature)}°</span> <span class="szn-next">${SEASON_ICON[s.next]} in ${left}</span>`;
+  el.innerHTML = `${SEASON_ICON[s.id]} <b>${SEASON_LABEL[s.id]}</b> <span class="szn-temp">${Math.round(s.temperature)}°</span>${wIcon} <span class="szn-next">${SEASON_ICON[s.next]} in ${left}</span>`;
 }
 
 function renderResChips() {

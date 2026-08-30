@@ -10,6 +10,7 @@ import {
 } from './assets.js';
 import { getTheme, tickWater } from './themes.js';
 import { seasonTint, baseTempFor } from './seasons.js';
+import { WeatherMachine } from './weather.js';
 import { ANIMAL_TYPES, ANIMAL_RADIUS, buildAnimal, updateAnimal, soundIntervalMs } from './animals.js';
 import {
   buildFarmhouse, buildBarn, buildSilo, buildEnclosure, BUILDING_RADIUS,
@@ -149,8 +150,11 @@ export class Homestead {
     this.onAnimalLost = onAnimalLost || (() => {});
     this._getSeason = typeof getSeason === 'function' ? getSeason : null;
     this.forceSeason = null; // debug override ('spring'|'summer'|'fall'|'winter')
+    this.forceWeather = null; // debug override ('clear'|'rain'|'snow'|'storm'|'fog')
     this.season = 'spring';  // current season id (mirror of game state)
     this.temperature = 14;   // current air temperature (°C-ish)
+    this.weather = { state: 'clear', intensity: 0, precip: null };
+    this.wind = { dir: 0, strength: 0.3, gust: 0 };
     this.predators = []; // foxes (day) & wolves (night) that hunt un-penned animals
     // hunting: bow tool aims at deer; hit odds fall off with camera distance
     this.huntMode = false;
@@ -601,6 +605,82 @@ export class Homestead {
         if (s && s.id) { this.season = s.id; this.temperature = s.temperature ?? this.temperature; }
       } catch { /* keep last known */ }
     }
+  }
+
+  // ---- weather + wind: tick the machine, drive particles + scene dimming ----
+  _updateWeather(now) {
+    if (!this._weatherM) this._weatherM = new WeatherMachine();
+    this._weatherM.setSeason(this.season);
+    if (this.forceWeather) this._weatherM.state = this.forceWeather; // debug override
+    this._weatherM.tick(now, this.temperature);
+    this.weather = { state: this._weatherM.state, intensity: this._weatherM.intensity, precip: this._weatherM.precip };
+    this.wind = this._weatherM.wind;
+    // weather dims the (already-set) daytime light on top of the season
+    const wi = this.weather.intensity;
+    if (wi > 0.02) {
+      this.sunLight.intensity *= (1 - 0.5 * wi);
+      this.hemi.intensity *= (1 - 0.22 * wi);
+    }
+    this._updatePrecip(now, wi);
+  }
+
+  // a camera-anchored point cloud of rain streaks / snow flakes, recycled
+  _buildPrecipFx() {
+    const N = 700;
+    const pos = new Float32Array(N * 3);
+    this._precipH = 58; // box height (local y 0..H, falls downward)
+    for (let i = 0; i < N; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 95;
+      pos[i * 3 + 1] = Math.random() * this._precipH;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 95;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({
+      map: glowTexture('255,255,255'), size: 0.9, transparent: true, opacity: 0,
+      depthWrite: false, sizeAttenuation: true, fog: false,
+    });
+    this._precipPts = new THREE.Points(geo, mat);
+    this._precipPts.frustumCulled = false;
+    this._precipPts.renderOrder = 5;
+    this.scene.add(this._precipPts);
+  }
+
+  _updatePrecip(now, wi) {
+    const kind = this.weather?.precip;
+    if (!this._precipPts) {
+      if (!kind || wi < 0.03) return; // nothing to show yet — build lazily on first precip
+      this._buildPrecipFx();
+    }
+    const pts = this._precipPts;
+    const active = kind && wi > 0.03;
+    pts.visible = active;
+    if (!active) { pts.material.opacity = 0; return; }
+    const snow = kind === 'snow';
+    const cam = this.camera.position;
+    pts.position.set(cam.x, 0, cam.z);
+    const arr = pts.geometry.attributes.position.array;
+    const H = this._precipH;
+    const dt = Math.min(0.05, (now - (this._precipNow || now)) / 1000);
+    this._precipNow = now;
+    const fall = (snow ? 6 : 34) * dt;
+    const w = this.wind || { dir: 0, strength: 0.3 };
+    const drift = (snow ? 5 : 9) * w.strength * dt;
+    const wx = Math.cos(w.dir) * drift, wz = Math.sin(w.dir) * drift;
+    for (let i = 0; i < arr.length; i += 3) {
+      arr[i + 1] -= fall;
+      arr[i] += wx + (snow ? Math.sin(now * 0.001 + i) * 0.04 : 0);
+      arr[i + 2] += wz;
+      if (arr[i + 1] < -6) { // recycle to the top, re-scattered around the camera
+        arr[i + 1] = H;
+        arr[i] = (Math.random() - 0.5) * 95;
+        arr[i + 2] = (Math.random() - 0.5) * 95;
+      }
+    }
+    pts.geometry.attributes.position.needsUpdate = true;
+    pts.material.size = snow ? 1.25 : 0.6;
+    pts.material.color.setHex(snow ? 0xffffff : 0xbcd6ea);
+    pts.material.opacity = Math.min(0.9, wi * (snow ? 0.9 : 0.75));
   }
 
   // ---- predators: foxes (day) & wolves (night) hunt un-penned animals --------
@@ -2653,6 +2733,7 @@ export class Homestead {
     }
     this.hemi.intensity *= tint.hemi;
     this.ambient.intensity *= tint.ambient;
+    this._updateWeather(now); // rain/snow particles + wind + weather dimming
     this.skyDayMat.opacity = d;
     this.sunBall.material.opacity = d;
     this.sunGlow.material.opacity = 0.8 * d * (0.9 + 0.1 * Math.sin(now / 2400));
@@ -2669,6 +2750,7 @@ export class Homestead {
       if (ft >= 1) this._fogEvent = null;
       else fogFar = 700 - Math.sin(ft * Math.PI) * 560; // dip toward ~140 mid-roll
     }
+    if (this.weather && this.weather.intensity > 0.02) fogFar *= (1 - 0.55 * this.weather.intensity); // rain/snow closes in
     this.scene.fog.far = fogFar;
     this.scene.fog.near = Math.min(90, fogFar * 0.28);
     // fireflies at night — but only when the farm has no lanterns/fires of its own
@@ -2843,7 +2925,9 @@ export class Homestead {
       try { this.fishing.update(now); } catch {}
     }
 
-    this.blades.rotation.z = now / 2400;
+    // windmill sails turn with the wind (accumulate so speed can vary smoothly)
+    this.blades.rotation.z += (0.12 + 0.9 * (this.wind?.strength || 0.3)) * (this._bladeDt || 0.016);
+    this._bladeDt = Math.min(0.05, (now - (this._bladeNow || now)) / 1000); this._bladeNow = now;
     for (const cloud of this.clouds) {
       cloud.position.x += cloud.userData.speed * 0.03;
       if (cloud.position.x > 340) cloud.position.x = -340;
@@ -3155,7 +3239,11 @@ export class Homestead {
     // processor & merchant-item animations
     for (const rec of this.placed.values()) {
       const ud = rec.group.userData;
-      if (ud.spin) ud.spin.rotation.z += rec.working ? 0.035 : 0.005;
+      if (ud.spin) {
+        // wind turbines spin with the wind; other spinners keep their old behavior
+        const windDriven = /windturbine|turbine|windmill/i.test(rec.type || '');
+        ud.spin.rotation.z += windDriven ? (0.01 + 0.08 * (this.wind?.strength || 0.3)) : (rec.working ? 0.035 : 0.005);
+      }
       if (ud.workGlow?.material?.emissive) {
         ud.workGlow.material.emissiveIntensity = rec.working ? 1.1 + Math.sin(now / 180) * 0.4 : 0.12;
       }
@@ -3212,7 +3300,12 @@ export class Homestead {
         continue;
       }
       const sway = rec.group.userData.sway;
-      if (sway) rec.group.rotation.z = Math.sin(now / 1400 * sway.speed + sway.phase) * sway.amp;
+      if (sway) {
+        // trees/decor lean and rustle harder in stronger wind, biased downwind
+        const ws = this.wind?.strength || 0.3;
+        rec.group.rotation.z = Math.sin(now / 1400 * sway.speed + sway.phase) * sway.amp * (0.5 + 1.6 * ws)
+          + Math.cos(this.wind?.dir || 0) * ws * 0.08;
+      }
       const anim = rec.group.userData.anim;
       if (!anim) continue;
       if (anim.kind === 'lantern') {
