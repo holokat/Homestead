@@ -12,6 +12,7 @@ import { FISH_TABLES } from './fishing.js';
 import { getThumb } from './thumbs.js';
 import { preloadModels, glbReady } from './glb_models.js';
 import { preloadAnimalModels, animalModelReady } from './animal_models.js';
+import { SEASON_ICON, SEASON_LABEL } from './seasons.js';
 import { MISSIONS, MISSION_PHASES, missionProgress } from './missions.js';
 import { generatePrivateKey, getPublicKey, finishEvent, bech32Encode } from './nostr-keys.js';
 import { PROCESSORS, RECIPES, PRODUCTS, MERCHANT_ITEMS, recipesFor } from './recipes.js';
@@ -674,6 +675,7 @@ setInterval(() => {
 setInterval(() => {
   if (!game || !farm || (game.readOnly && !testMode)) return;
   ensureOrders();
+  updateSeasonHud();
   const now = Date.now();
   let dirty = false;
   // finished construction sites become their real buildings
@@ -1010,6 +1012,7 @@ function buildFarmScene() {
     onFenceClick: repairFenceUI,
     onFenceState: handleFenceState,
     onAnimalLost: handleAnimalLost,
+    getSeason: () => game.seasonInfo(),
     onProductReady: handleProductReady,
     onConstructionKnock: () => audio.playSfx('construction-hammer-under-way', 0.4),
     onHouseClick: handleHouseClick,
@@ -1470,6 +1473,22 @@ function renderCoins() {
     if (k < 1) coinTween = requestAnimationFrame(step);
   };
   coinTween = requestAnimationFrame(step);
+}
+
+// the real-time season/temperature badge (top-of-screen, like the fence badge)
+function updateSeasonHud() {
+  if (!game) return;
+  let el = document.getElementById('season-hud');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'season-hud';
+    el.title = 'the season turns in real time — about three days each';
+    document.body.appendChild(el);
+  }
+  const s = game.seasonInfo();
+  const days = s.msToNext / 86400000;
+  const left = days >= 1 ? `${days.toFixed(1)}d` : `${Math.max(1, Math.round(s.msToNext / 3600000))}h`;
+  el.className = 'szn-' + s.id;
+  el.innerHTML = `${SEASON_ICON[s.id]} <b>${SEASON_LABEL[s.id]}</b> <span class="szn-temp">${Math.round(s.temperature)}°</span> <span class="szn-next">${SEASON_ICON[s.next]} in ${left}</span>`;
 }
 
 function renderResChips() {

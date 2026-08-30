@@ -1292,5 +1292,21 @@ body.book-open #sidebar { transform: translateX(0); }
 #fence-hud.hidden { display: none; }
 #fence-hud.cracked { background: rgba(184, 120, 38, 0.94); }
 #fence-hud.broken { background: rgba(196, 60, 45, 0.96); animation: fh-pulse 1.2s ease-in-out infinite; }
+
+/* ---- real-time season / temperature badge ---- */
+#season-hud {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 14;
+  padding: 5px 14px; border-radius: 999px; white-space: nowrap;
+  font-size: 13px; font-weight: 800; letter-spacing: 0.01em;
+  color: #f6ecd6; background: rgba(70, 92, 74, 0.9);
+  box-shadow: 0 3px 10px rgba(30, 30, 12, 0.35); border: 1px solid rgba(0, 0, 0, 0.15);
+  pointer-events: none; user-select: none;
+}
+#season-hud .szn-temp { opacity: 0.95; margin-left: 4px; }
+#season-hud .szn-next { opacity: 0.6; font-weight: 600; font-size: 11px; margin-left: 6px; }
+#season-hud.szn-spring { background: rgba(96, 150, 92, 0.9); }
+#season-hud.szn-summer { background: rgba(206, 152, 54, 0.92); color: #3a2a08; }
+#season-hud.szn-fall   { background: rgba(176, 96, 44, 0.92); }
+#season-hud.szn-winter { background: rgba(108, 138, 176, 0.92); }
 #fence-hud .fh-cta { opacity: 0.82; font-weight: 600; font-size: 11px; margin-left: 4px; }
 @keyframes fh-pulse { 0%,100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.05); } }

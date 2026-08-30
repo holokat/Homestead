@@ -9,6 +9,7 @@ import {
   buildCrop, buildTree, buildObject, OBJECT_RADIUS, hash32, mulberry32,
 } from './assets.js';
 import { getTheme, tickWater } from './themes.js';
+import { seasonTint, baseTempFor } from './seasons.js';
 import { ANIMAL_TYPES, ANIMAL_RADIUS, buildAnimal, updateAnimal, soundIntervalMs } from './animals.js';
 import {
   buildFarmhouse, buildBarn, buildSilo, buildEnclosure, BUILDING_RADIUS,
@@ -115,7 +116,7 @@ function buildingGroupFor(type, opts) {
 }
 
 export class Homestead {
-  constructor(container, { cols, rows, tier = 1, themeId = 'meadow', signText, hideSign = false, farmhouseLevel = 1, onPlotHover, onPlotClick, onObjectClick, onObjectHover, onSignClick, onAnimalSound, onMarketClick, onDockClick, onFishResult, onProductReady, onConstructionKnock, onHouseClick, houseRot, houseOffset, onWindmillClick, windmillRot, onGateToggle, onDeerResult, onBowState, fenceHP, onFenceClick, onFenceState, onAnimalLost } = {}) {
+  constructor(container, { cols, rows, tier = 1, themeId = 'meadow', signText, hideSign = false, farmhouseLevel = 1, onPlotHover, onPlotClick, onObjectClick, onObjectHover, onSignClick, onAnimalSound, onMarketClick, onDockClick, onFishResult, onProductReady, onConstructionKnock, onHouseClick, houseRot, houseOffset, onWindmillClick, windmillRot, onGateToggle, onDeerResult, onBowState, fenceHP, onFenceClick, onFenceState, onAnimalLost, getSeason } = {}) {
     this.container = container;
     this.cols = cols;
     this.rows = rows;
@@ -146,6 +147,10 @@ export class Homestead {
     this.fenceHP = typeof fenceHP === 'number' ? fenceHP : 100; // 0..100 perimeter health
     this.hoveredFence = false;
     this.onAnimalLost = onAnimalLost || (() => {});
+    this._getSeason = typeof getSeason === 'function' ? getSeason : null;
+    this.forceSeason = null; // debug override ('spring'|'summer'|'fall'|'winter')
+    this.season = 'spring';  // current season id (mirror of game state)
+    this.temperature = 14;   // current air temperature (°C-ish)
     this.predators = []; // foxes (day) & wolves (night) that hunt un-penned animals
     // hunting: bow tool aims at deer; hit odds fall off with camera distance
     this.huntMode = false;
@@ -580,6 +585,22 @@ export class Homestead {
   damageFence(amount) {
     this.fenceHP = Math.max(0, (this.fenceHP == null ? 100 : this.fenceHP) - amount);
     this._applyFenceDamage();
+  }
+
+  // ---- environment: pull the current season/temperature from game (or a debug
+  // override) into scene-side fields the render loop and other systems read ----
+  _updateSeason() {
+    if (this.forceSeason) {
+      this.season = this.forceSeason;
+      this.temperature = baseTempFor(this.forceSeason);
+      return;
+    }
+    if (this._getSeason) {
+      try {
+        const s = this._getSeason();
+        if (s && s.id) { this.season = s.id; this.temperature = s.temperature ?? this.temperature; }
+      } catch { /* keep last known */ }
+    }
   }
 
   // ---- predators: foxes (day) & wolves (night) hunt un-penned animals --------
@@ -2622,6 +2643,16 @@ export class Homestead {
     this.hemi.intensity = 0.2 + 0.7 * d;
     this.ambient.intensity = 0.1 + 0.13 * d;
     this.scene.fog.color.lerpColors(this.fogNight, this.fogDay, d);
+    // ---- seasonal modulation layered on top of the day/night + biome ----
+    this._updateSeason();
+    const tint = seasonTint(this.season);
+    if (tint.sunMix > 0) {
+      const tc = this._tintC || (this._tintC = new THREE.Color());
+      this.sunLight.color.lerp(tc.setHex(tint.sun), tint.sunMix * d); // tint only the daytime sun
+      this.scene.fog.color.lerp(tc.setHex(tint.fog), tint.fogMix);
+    }
+    this.hemi.intensity *= tint.hemi;
+    this.ambient.intensity *= tint.ambient;
     this.skyDayMat.opacity = d;
     this.sunBall.material.opacity = d;
     this.sunGlow.material.opacity = 0.8 * d * (0.9 + 0.1 * Math.sin(now / 2400));

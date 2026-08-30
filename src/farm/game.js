@@ -2,6 +2,7 @@
 // coins, inventory, purchases, and growth points that don't depend on engagement alone.
 
 import { TIERS, reqMet, findItem, ALL_UNLOCKABLES, GOODS, STARTER_COINS } from './catalog.js';
+import { seasonAt, temperatureAt, seasonGrowthFactor, SEASONS, SEASON_MS } from './seasons.js';
 
 const SAVE_VERSION = 3;
 export const WATER_COOLDOWN_MS = 90000;
@@ -43,12 +44,31 @@ export class Game {
     this.collectionBonuses = []; // collection rows already paid out
     this.housePurchased = 0; // highest farmhouse level bought with coins
     this.claimedAt = 0;   // unix seconds; only engagement AFTER this counts
+    this.seasonEpoch = 0; // ms anchor for the real-time season clock (0 = unset)
     this.stats = {};      // lifetime action counters (missions)
     this.missionsClaimed = []; // mission ids already rewarded
     this.savedAt = 0;
     this.onSaved = null;
     this._unlockSnapshot = new Set();
     this.load();
+    // anchor the season clock once, the first time this farm is ever loaded
+    if (!this.seasonEpoch) {
+      this.seasonEpoch = this.savedAt || (this.claimedAt ? this.claimedAt * 1000 : Date.now());
+    }
+  }
+
+  // --- real-time seasons (derived from the persisted epoch) ---
+  get season() { return seasonAt(this.seasonEpoch || Date.now(), Date.now()); }
+  get temperature() { return temperatureAt(this.seasonEpoch || Date.now(), Date.now()); }
+  get seasonGrowthFactor() { return seasonGrowthFactor(this.season.id); }
+  seasonInfo() {
+    const s = this.season;
+    return {
+      ...s,
+      temperature: this.temperature,
+      next: SEASONS[(s.index + 1) % 4],
+      msToNext: SEASON_MS - s.phase * SEASON_MS,
+    };
   }
 
   get tierDef() { return TIERS.find((t) => t.id === this.tier) || TIERS[0]; }
@@ -102,6 +122,7 @@ export class Game {
     this.collectionBonuses = data.collectionBonuses || [];
     this.housePurchased = data.housePurchased || 0;
     this.claimedAt = data.claimedAt || 0;
+    this.seasonEpoch = data.seasonEpoch || 0;
     this.stats = data.stats || {};
     this.missionsClaimed = data.missionsClaimed || [];
     this.baseline = data.baseline || null;
@@ -124,7 +145,7 @@ export class Game {
       lastLoginDay: this.lastLoginDay, streak: this.streak,
       discovered: this.discovered, collectionBonuses: this.collectionBonuses,
       housePurchased: this.housePurchased,
-      claimedAt: this.claimedAt,
+      claimedAt: this.claimedAt, seasonEpoch: this.seasonEpoch,
       stats: this.stats, missionsClaimed: this.missionsClaimed,
       baseline: this.baseline, savedAt: this.savedAt,
     };
