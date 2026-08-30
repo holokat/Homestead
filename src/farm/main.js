@@ -1531,14 +1531,17 @@ function updateSeasonHud() {
   if (!el) {
     el = document.createElement('div'); el.id = 'season-hud';
     document.body.appendChild(el);
-    // in test mode, click the badge to fast-forward one season (for testing)
+    // in test mode, click the badge to jump to the NEXT season at its PEAK, so
+    // the full look (deep autumn colour / heavy snow) shows right away
     el.addEventListener('click', () => {
       if (!testMode) return;
       const SEASON_MS = 3 * 24 * 60 * 60 * 1000;
-      game.seasonEpoch = (game.seasonEpoch || Date.now()) - SEASON_MS;
+      const target = (game.season.index + 1) % 4;
+      game.seasonEpoch = Date.now() - (target + 0.65) * SEASON_MS; // land ~2/3 into that season
       game.save();
+      if (farm) { farm._foliageCheck = 0; farm._foliageKey = null; farm._autumnApplied = null; } // re-apply now
       updateSeasonHud();
-      toast(`⏩ jumped to ${SEASON_LABEL[game.season.id]}`);
+      toast(`⏩ jumped to peak ${SEASON_LABEL[game.season.id]}`);
     });
   }
   el.style.pointerEvents = testMode ? 'auto' : 'none';
