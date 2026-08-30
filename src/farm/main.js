@@ -2539,8 +2539,17 @@ function tryFish() {
   if (farm.fishing) { toast('🎣 already fishing — watch the bobber!'); return; }
   setMode(null);
   setTool('select');
+  // in deep winter the water freezes over — chop a hole before you can fish
+  const ice = farm.iceState();
+  if (ice.frozen && !ice.hole) {
+    const r = farm.chopIce();
+    audio.playSfx('construction', 0.35);
+    if (r.done) toast('🧊 a fishing hole! click the dock again to drop your line.');
+    else setModeBanner(`🪓 chopping through the ice… ${r.hits}/${r.need} — keep clicking`);
+    return;
+  }
   if (farm.startFishing()) {
-    setModeBanner('🎣 fishing… click when the ❗ appears!');
+    setModeBanner(ice.frozen ? '🎣 ice fishing… click when the ❗ appears!' : '🎣 fishing… click when the ❗ appears!');
     audio.playSfx('water', 0.3);
   }
 }

@@ -623,6 +623,7 @@ export class Homestead {
     }
     this._updatePrecip(now, wi);
     this._updateSnow(now);
+    this._updateIce(now);
   }
 
   // a camera-anchored point cloud of rain streaks / snow flakes, recycled
@@ -710,6 +711,63 @@ export class Homestead {
     if (!this._snowMesh) this._buildSnowFx();
     this._snowMesh.visible = true;
     this._snowMesh.material.opacity = Math.min(0.88, this._snowDepth);
+  }
+
+  // ---- winter ice over the fishing water: freeze, chop a hole, fish through it ----
+  _buildIceFx() {
+    const wz = this.deerWaterZone; if (!wz) return;
+    const geo = new THREE.CircleGeometry((wz.waterR || 20) + 2, 40);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xdcecf6, roughness: 0.32, metalness: 0.12, transparent: true, opacity: 0, depthWrite: false });
+    this._iceMesh = new THREE.Mesh(geo, mat);
+    this._iceMesh.rotation.x = -Math.PI / 2;
+    this._iceMesh.position.set(wz.x, (this.dockWaterY ?? -1.8) + 0.07, wz.z);
+    this._iceMesh.renderOrder = 3;
+    this.scene.add(this._iceMesh);
+    const hmat = new THREE.MeshBasicMaterial({ color: 0x17404e, transparent: true, opacity: 0.92, depthWrite: false });
+    this._iceHoleMesh = new THREE.Mesh(new THREE.CircleGeometry(1.7, 18), hmat);
+    this._iceHoleMesh.rotation.x = -Math.PI / 2;
+    this._iceHoleMesh.visible = false;
+    this._iceHoleMesh.renderOrder = 4;
+    this.scene.add(this._iceHoleMesh);
+  }
+
+  _updateIce(now) {
+    const wz = this.deerWaterZone; if (!wz) return;
+    const dt = Math.min(0.1, (now - (this._iceNow || now)) / 1000); this._iceNow = now;
+    const target = this.temperature <= 0 ? 1 : 0;
+    const cur = this._iceFreeze || 0;
+    this._iceFreeze = cur + (target - cur) * Math.min(1, (target > cur ? 0.06 : 0.1) * dt * 4);
+    if (this._iceFreeze < 0.02) {
+      if (this._iceMesh) this._iceMesh.visible = false;
+      if (this._iceHoleMesh) this._iceHoleMesh.visible = false;
+      this._iceHole = false; this._iceChop = 0; return;
+    }
+    if (!this._iceMesh) this._buildIceFx();
+    this._iceMesh.visible = true;
+    this._iceMesh.material.opacity = Math.min(0.92, this._iceFreeze);
+    if (this._iceFreeze < 0.55) { this._iceHole = false; this._iceChop = 0; } // thaws → hole refreezes
+    if (this._iceHoleMesh) this._iceHoleMesh.visible = !!this._iceHole;
+  }
+
+  iceState() {
+    return { frozen: (this._iceFreeze || 0) >= 0.55, hole: !!this._iceHole };
+  }
+
+  // chop a fishing hole through the ice — call repeatedly; returns {done,hits,need}
+  chopIce() {
+    const st = this.iceState();
+    if (!st.frozen || st.hole) return { done: true, hits: 0, need: 0 };
+    this._iceChop = (this._iceChop || 0) + 1;
+    const need = 4;
+    const hx = this.castFrom ? this.castFrom.x : this.deerWaterZone.x;
+    const hz = this.castFrom ? this.castFrom.z : this.deerWaterZone.z;
+    if (this._iceHoleMesh) this._iceHoleMesh.position.set(hx, (this.dockWaterY ?? -1.8) + 0.09, hz);
+    if (this._iceChop >= need) {
+      this._iceHole = true;
+      if (this._iceHoleMesh) this._iceHoleMesh.visible = true;
+      return { done: true, hits: this._iceChop, need };
+    }
+    return { done: false, hits: this._iceChop, need };
   }
 
   // ---- predators: foxes (day) & wolves (night) hunt un-penned animals --------
@@ -1401,6 +1459,8 @@ export class Homestead {
 
   startFishing() {
     if (this.fishing) return false;
+    const ice = this.iceState();
+    if (ice.frozen && !ice.hole) return false; // must chop a hole through the ice first
     this.controls.autoRotate = false;
     this._setIdleTackle(false); // one bobber at a time
     try {
