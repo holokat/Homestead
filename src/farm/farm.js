@@ -627,6 +627,7 @@ export class Homestead {
     const c2 = this._folC2 || (this._folC2 = new THREE.Color());
     const snow = this._folSnow || (this._folSnow = new THREE.Color(0xe8eef4));
     this.scene.traverse((o) => {
+      if (o.userData.fallOnly) { o.visible = fall; return; } // seasonal decor (leaf piles, pumpkins)
       if (!o.isMesh || o.userData.foliage == null || !o.material || !o.material.color) return;
       c.setHex(o.userData.foliage);
       if (af > 0 && o.userData.autumnCol != null) c.lerp(c2.setHex(o.userData.autumnCol), af);

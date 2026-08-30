@@ -107,7 +107,7 @@ export class Game {
     this.windmillRot = typeof data.windmillRot === 'number' ? data.windmillRot : null;
     this.paths = Array.isArray(data.paths) ? data.paths : [];
     this.fenceHP = typeof data.fenceHP === 'number' ? data.fenceHP : 100;
-    this.theme = data.theme || 'meadow';
+    this.theme = data.theme === 'autumn' ? 'meadow' : (data.theme || 'meadow'); // Autumn Hollow retired → meadow
     this.biome = data.biome || null;
     this.coins = data.coins ?? STARTER_COINS;
     this.inventory = data.inventory || {};

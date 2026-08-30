@@ -1382,6 +1382,27 @@ function meadowOuter(ctx) {
   const canGeo = new THREE.SphereGeometry(1.5, 8, 7);
   for (let i = 0; i < 3; i++) { const im = outerInstanced(g, canGeo, mat(dShades[i]), dCan[i]); if (im) tagFoliage(im); }
 
+  // ---- fall-only ground dressing (carried from the retired Autumn Hollow):
+  // leaf piles and pumpkins that appear out in the meadow when autumn arrives ----
+  const fallDecor = new THREE.Group();
+  fallDecor.visible = false;
+  fallDecor.userData.fallOnly = true;
+  const leafCols = [0xd8742a, 0xc23b2e, 0xe8a02e, 0xd88a2a];
+  for (const [x, z] of outerPoints(ctx, rng, R * 0.9, clear + 4, 12)) {
+    const pile = ball(0.85 + rng() * 0.5, leafCols[Math.floor(rng() * leafCols.length)], 0.3, 8);
+    pile.position.set(x, heightAt(x, z) + 0.12, z - zC);
+    fallDecor.add(pile);
+  }
+  for (const [x, z] of outerPoints(ctx, rng, R * 0.9, clear + 6, 8)) {
+    const p = new THREE.Group();
+    const body = ball(0.42 + rng() * 0.22, 0xe8781e, 0.75, 8); body.position.y = 0.3; p.add(body);
+    const stem = cyl(0.05, 0.08, 0.28, 0x5d7a2a, 5); stem.position.set(0, 0.62, 0); stem.rotation.z = 0.3; p.add(stem);
+    p.position.set(x, heightAt(x, z), z - zC);
+    p.rotation.y = rng() * Math.PI;
+    fallDecor.add(p);
+  }
+  g.add(fallDecor);
+
   // ---- open-ground details: rocks, bushes, grass near the clearing ----
   const rocks = outerPoints(ctx, rng, R * 0.97, clear + 2, 80).map(([x, z]) => ({
     x, y: heightAt(x, z) + 0.3, z: z - zC, s: 0.5 + rng() * 1.1, sy: 0.8, ry: rng() * Math.PI * 2,
@@ -2841,23 +2862,8 @@ export const THEMES = [
     buildScenery: sakuraScenery,
     buildOuterZone: safeOuter(sakuraOuter),
   },
-  {
-    id: 'autumn',
-    name: 'Autumn Hollow',
-    icon: '🍂',
-    music: '/audio/farm-theme.mp3',
-    skyDay: ['#6aa8d8', '#a4c8e0', '#ecd2a4', '#f2c078'],
-    skyNight: ['#0c0e22', '#1c1838', '#332448', '#4a3050'],
-    colors: {
-      grass: 0x9aa848, grassEdge: 0x839238, dirtTop: 0x7d4f2c, dirtDeep: 0x59361d,
-      rock: 0x7a6a5c, water: 0x4a9cb8,
-      fogDay: 0xe8d8b8, fogNight: 0x1c1830,
-      sunDay: 0xffe8c0, sunNight: 0xa8a0cc,
-      tuftColorHSL: { h: 0.1, s: 0.55, l: 0.45 },
-    },
-    buildScenery: autumnScenery,
-    buildOuterZone: safeOuter(autumnOuter),
-  },
+  // Autumn Hollow retired — its look now lives in the meadow homestead's fall
+  // season (autumn foliage + fall-only leaf piles & pumpkins in the outer zone).
 ];
 
 export function getTheme(id) {
