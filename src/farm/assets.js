@@ -783,11 +783,15 @@ export function buildCrop(type, stage, seed, ctx = {}) {
 
 // Autumn Hollow's foliage palette — deciduous leaves lerp toward these in fall.
 export const AUTUMN_FOLIAGE = [0xd8632a, 0xc23b2e, 0xe8a02e, 0xd88a2a, 0xb8562a];
-// tag a leaf/canopy mesh so the farm can recolour it seasonally (green ↔ autumn)
-export function tagFoliage(m) {
+// tag a leaf/canopy mesh so the farm can recolour it seasonally.
+//  - deciduous (default): turns autumn in fall AND takes winter snow
+//  - conifer ({ autumn:false }): stays green in fall, just takes winter snow
+// snowAmt randomizes the winter dusting so only *some* trees get much snow.
+export function tagFoliage(m, { autumn = true } = {}) {
   if (!m || !m.material || !m.material.color) return m;
   m.userData.foliage = m.material.color.getHex();               // green base
-  m.userData.autumnCol = AUTUMN_FOLIAGE[Math.floor(Math.random() * AUTUMN_FOLIAGE.length)];
+  if (autumn) m.userData.autumnCol = AUTUMN_FOLIAGE[Math.floor(Math.random() * AUTUMN_FOLIAGE.length)];
+  m.userData.snowAmt = Math.random() < 0.28 ? 0 : (0.4 + Math.random() * 0.5);
   return m;
 }
 
@@ -1107,7 +1111,7 @@ export function buildTimberPine() {
   const trunk = cyl(0.3, 0.44, 3.4, 0x6b4a2c, 7); trunk.position.y = 1.7; g.add(trunk);
   let y = 2.5;
   for (let i = 0; i < 3; i++) {
-    const c = cone(1.75 - i * 0.45, 1.7, i % 2 ? 0x3f7a44 : 0x347040, 7);
+    const c = tagFoliage(cone(1.75 - i * 0.45, 1.7, i % 2 ? 0x3f7a44 : 0x347040, 7), { autumn: false });
     c.position.y = y; g.add(c); y += 0.85;
   }
   g.userData.sway = { speed: 1.05, phase: Math.random() * 6, amp: 0.02 };

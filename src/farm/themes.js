@@ -1360,8 +1360,8 @@ function meadowOuter(ctx) {
     }
   }
   outerInstanced(g, new THREE.CylinderGeometry(0.16, 0.28, 1.4, 6), mat(P.woodDark), sTrunk);
-  outerInstanced(g, new THREE.ConeGeometry(1.35, 2.4, 7), mat(0x2c6a40), sT1);
-  outerInstanced(g, new THREE.ConeGeometry(0.9, 2.0, 7), mat(0x33774a), sT2);
+  { const a = outerInstanced(g, new THREE.ConeGeometry(1.35, 2.4, 7), mat(0x2c6a40), sT1); if (a) tagFoliage(a, { autumn: false }); }
+  { const b = outerInstanced(g, new THREE.ConeGeometry(0.9, 2.0, 7), mat(0x33774a), sT2); if (b) tagFoliage(b, { autumn: false }); }
 
   // scattered round-canopy deciduous trees in mixed greens
   const dTrunk = [];

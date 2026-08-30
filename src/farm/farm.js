@@ -612,20 +612,25 @@ export class Homestead {
     }
   }
 
-  // recolour tagged deciduous foliage toward autumn as fall deepens
+  // recolour tagged foliage seasonally: deciduous turns autumn in fall, and any
+  // tagged canopy (incl. conifers) takes a randomized snow dusting in winter.
   _applyFoliageSeason(now) {
     if (now - (this._foliageCheck || 0) < 1500) return;
     this._foliageCheck = now;
-    let af = 0;
-    if (this.season === 'fall') af = Math.min(1, 0.3 + (this.seasonPhase || 0) * 1.1);
-    else if (this.season === 'winter') af = 0.35; // a few leaves cling into early winter
-    if (af === 0 && this._autumnApplied === 0) return; // already fully green, nothing to do
-    this._autumnApplied = af;
+    const fall = this.season === 'fall', winter = this.season === 'winter';
+    const af = fall ? Math.min(1, 0.3 + (this.seasonPhase || 0) * 1.1) : 0;              // autumn factor
+    const sf = winter ? Math.min(1, 0.45 + (this.seasonPhase || 0) * 1.0) : (fall && (this.seasonPhase || 0) > 0.85 ? 0.2 : 0); // snow factor
+    const key = af.toFixed(2) + '|' + sf.toFixed(2);
+    if (key === this._foliageKey) return; // nothing changed since last pass
+    this._foliageKey = key;
     const c = this._folC || (this._folC = new THREE.Color());
     const c2 = this._folC2 || (this._folC2 = new THREE.Color());
+    const snow = this._folSnow || (this._folSnow = new THREE.Color(0xe8eef4));
     this.scene.traverse((o) => {
       if (!o.isMesh || o.userData.foliage == null || !o.material || !o.material.color) return;
-      c.setHex(o.userData.foliage).lerp(c2.setHex(o.userData.autumnCol || 0xd8632a), af);
+      c.setHex(o.userData.foliage);
+      if (af > 0 && o.userData.autumnCol != null) c.lerp(c2.setHex(o.userData.autumnCol), af);
+      if (sf > 0) c.lerp(snow, (o.userData.snowAmt ?? 0.5) * sf);
       o.material.color.copy(c);
     });
   }
