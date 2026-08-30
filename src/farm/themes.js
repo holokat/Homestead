@@ -726,6 +726,7 @@ function outerLandmass(ctx, { color = 0x74bf58, under = 0x54443a, radiusK = 1.6,
   topGeo.computeVertexNormals();
   const top = new THREE.Mesh(topGeo, mat(color, { side: THREE.DoubleSide }));
   top.receiveShadow = true;
+  top.userData.ground = color; // seasonal ground tint (golden fall / snowy winter)
   g.add(top);
 
   // rocky underside skirt, ~8 deep, jagged bottom; deterministic jitter
@@ -947,6 +948,7 @@ function meadowValleyFloor(ctx, rng, R, heightAt, opts = {}) {
   // smooth-shaded: flat shading turns the big triangles into ugly dark facets
   const top = new THREE.Mesh(topGeo, mat(opts.top ?? 0x6db554, { side: THREE.DoubleSide, flatShading: false }));
   top.receiveShadow = true;
+  top.userData.ground = opts.top ?? 0x6db554; // seasonal ground tint
   g.add(top);
 
   // rocky underside skirt with a jagged bottom; deterministic angle-based

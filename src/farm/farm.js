@@ -376,6 +376,7 @@ export class Homestead {
     capGeo.translate(0, -1.1, 0);
     const cap = mesh(capGeo, mat(grassColor));
     cap.receiveShadow = true;
+    cap.userData.ground = grassColor; // recoloured seasonally (golden fall, snowy winter)
     this.scene.add(cap);
 
     const D = this.zFront - this.zBack;
@@ -626,9 +627,20 @@ export class Homestead {
     const c = this._folC || (this._folC = new THREE.Color());
     const c2 = this._folC2 || (this._folC2 = new THREE.Color());
     const snow = this._folSnow || (this._folSnow = new THREE.Color(0xe8eef4));
+    const gold = this._folGold || (this._folGold = new THREE.Color(0xb39a4a)); // autumn grass
+    const gc = this._folGC || (this._folGC = new THREE.Color());
     this.scene.traverse((o) => {
       if (o.userData.fallOnly) { o.visible = fall; return; } // seasonal decor (leaf piles, pumpkins)
-      if (!o.isMesh || o.userData.foliage == null || !o.material || !o.material.color) return;
+      if (!o.isMesh || !o.material || !o.material.color) return;
+      // ground: grass goes golden in fall, whitens across the whole zone in winter
+      if (o.userData.ground != null) {
+        gc.setHex(o.userData.ground);
+        if (af > 0) gc.lerp(gold, af * 0.6);
+        if (sf > 0) gc.lerp(snow, sf * 0.82);
+        o.material.color.copy(gc);
+        return;
+      }
+      if (o.userData.foliage == null) return;
       c.setHex(o.userData.foliage);
       if (af > 0 && o.userData.autumnCol != null) c.lerp(c2.setHex(o.userData.autumnCol), af);
       if (sf > 0) c.lerp(snow, (o.userData.snowAmt ?? 0.5) * sf);
