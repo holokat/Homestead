@@ -158,6 +158,7 @@ export class Homestead {
     this.wind = { dir: 0, strength: 0.3, gust: 0 };
     this._shelters = []; // windbreak lee zones {x,z,r,reduction} that calm the wind
     this.powerDeficit = false; // set by the power economy — dims night lights
+    this.decayRate = { growth: 1, weather: 1 }; // env multipliers (rain speeds wear)
     this.predators = []; // foxes (day) & wolves (night) that hunt un-penned animals
     // hunting: bow tool aims at deer; hit odds fall off with camera distance
     this.huntMode = false;
@@ -627,7 +628,42 @@ export class Homestead {
     this._updatePrecip(now, wi);
     this._updateSnow(now);
     this._updateIce(now);
+    // rain accelerates structural weathering; winter slows plant growth/encroach
+    this.decayRate.weather = 1 + (this.weather.precip === 'rain' ? this.weather.intensity : 0) * 1.6;
+    this.decayRate.growth = this.temperature <= 0 ? 0.15 : this.temperature < 8 ? 0.7 : 1.2;
   }
+
+  // ---- buildings slowly weather (like the fence): they dull and grime over
+  // time — faster in the rain — until you repair them ----
+  _updateWeathering(now) {
+    if (now - (this._wearCheck || 0) < 2000) return;
+    const dt = (now - (this._wearCheck || now)) / 1000; this._wearCheck = now;
+    for (const rec of this.placed.values()) {
+      if (!/barn|silo|coop|shed|hut|house|stable|windmill|cabin|workshop|mill|kitchen|smokehouse|bakery|creamery/i.test(rec.type || '')) continue;
+      rec.wear = Math.min(1, (rec.wear || 0) + dt * 0.0016 * this.decayRate.weather); // ~10 min to look shabby
+      this._applyBuildingWear(rec);
+    }
+  }
+
+  _applyBuildingWear(rec) {
+    const wear = rec.wear || 0;
+    rec.group.traverse((o) => {
+      if (!o.isMesh || !o.material || !o.material.color) return;
+      if (o.material._col0 == null) o.material._col0 = o.material.color.getHex();
+      const c = o.material._colScratch || (o.material._colScratch = new THREE.Color());
+      c.setHex(o.material._col0).lerp(this._grimeC || (this._grimeC = new THREE.Color(0x6a5f4c)), wear * 0.5);
+      o.material.color.copy(c);
+    });
+  }
+
+  repairBuilding(id) {
+    const rec = this.placed.get(id);
+    if (!rec) return;
+    rec.wear = 0;
+    rec.group.traverse((o) => { if (o.isMesh && o.material && o.material._col0 != null) o.material.color.setHex(o.material._col0); });
+  }
+
+  buildingWear(id) { return this.placed.get(id)?.wear || 0; }
 
   // a camera-anchored point cloud of rain streaks / snow flakes, recycled
   _buildPrecipFx() {
@@ -2972,6 +3008,7 @@ export class Homestead {
       this._fenceState = st;
       try { this.onFenceState(Math.round(this.fenceHP), st, changed); } catch {}
     }
+    this._updateWeathering(now); // buildings dull & grime over time
     // roosters greet the dawn
     if (prevDay < 0.3 && d >= 0.3) {
       for (const ar of this.animalRecs.values()) {

@@ -3392,6 +3392,20 @@ function handleObjectClick(farmId) {
   // axe equipped + a choppable tree → chop it for wood (repurposes the click)
   if (activeTool === 'chop' && item?.choppable) { chopTimber(farmId, entry, item); return; }
   const actions = [];
+  // a weathered building can be repaired back to new
+  if (farm.buildingWear(farmId) > 0.35) {
+    const cost = 12;
+    actions.push({
+      label: `🔨 repair (worn) · ${COIN}${cost}`,
+      fn: () => {
+        if (game.coins < cost && !testMode) { toast(`🔨 repairs cost ${cost}${COIN}`, false); audio.playSfx('denied', 0.25); return; }
+        if (!testMode) { game.addCoins(-cost); renderCoins(); floatAtCoins(`-${cost}${COIN}`); }
+        farm.repairBuilding(farmId);
+        audio.playSfx('construction', 0.5);
+        toast('🔨 good as new!');
+      },
+    });
+  }
   // pets & animals can be befriended — pet/play to build a bond
   if (ANIMALS.some((a) => a.id === entry.type)) addPetActions(actions, farmId, entry);
   // tech-tree fan-out: upgrade in place (hand pump → well → deep well…)
