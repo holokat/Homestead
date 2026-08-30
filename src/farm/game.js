@@ -277,6 +277,7 @@ export class Game {
 
   // returns indices whose stage changed
   addGrowth(indices, amount = 1) {
+    amount *= this.seasonGrowthFactor; // crops crawl in autumn, go dormant in winter
     const changed = [];
     for (const i of indices) {
       const p = this.plots[i];

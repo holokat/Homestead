@@ -622,6 +622,7 @@ export class Homestead {
       this.hemi.intensity *= (1 - 0.22 * wi);
     }
     this._updatePrecip(now, wi);
+    this._updateSnow(now);
   }
 
   // a camera-anchored point cloud of rain streaks / snow flakes, recycled
@@ -681,6 +682,34 @@ export class Homestead {
     pts.material.size = snow ? 1.25 : 0.6;
     pts.material.color.setHex(snow ? 0xffffff : 0xbcd6ea);
     pts.material.opacity = Math.min(0.9, wi * (snow ? 0.9 : 0.75));
+  }
+
+  // a thin white sheet over the farm grass that builds up in the cold and melts
+  _buildSnowFx() {
+    const w = this.W || 40, d = (this.zFront - this.zBack) || 40;
+    const zc = (this.zFront + this.zBack) / 2;
+    const geo = new THREE.PlaneGeometry(w * 1.04, d * 1.04);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xf3f7ff, roughness: 0.96, metalness: 0, transparent: true, opacity: 0, depthWrite: false });
+    this._snowMesh = new THREE.Mesh(geo, mat);
+    this._snowMesh.rotation.x = -Math.PI / 2;
+    this._snowMesh.position.set(0, 0.08, zc);
+    this._snowMesh.receiveShadow = true;
+    this._snowMesh.renderOrder = 2;
+    this.scene.add(this._snowMesh);
+  }
+
+  _updateSnow(now) {
+    const dt = Math.min(0.1, (now - (this._snowNow || now)) / 1000); this._snowNow = now;
+    const cold = this.temperature <= 0.8;
+    const snowing = this.weather?.precip === 'snow';
+    const target = cold ? (snowing ? 1 : 0.6) : 0; // a base cover in the cold, deeper while snowing
+    const cur = this._snowDepth || 0;
+    const rate = target > cur ? 0.09 : 0.16; // melts a bit faster than it builds
+    this._snowDepth = cur + (target - cur) * Math.min(1, rate * dt * 4);
+    if (this._snowDepth < 0.01) { if (this._snowMesh) this._snowMesh.visible = false; return; }
+    if (!this._snowMesh) this._buildSnowFx();
+    this._snowMesh.visible = true;
+    this._snowMesh.material.opacity = Math.min(0.88, this._snowDepth);
   }
 
   // ---- predators: foxes (day) & wolves (night) hunt un-penned animals --------
