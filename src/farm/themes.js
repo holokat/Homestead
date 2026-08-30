@@ -2,7 +2,7 @@
 // sky, palette, fog/light colors, and low-poly set-dressing built from assets.js.
 
 import * as THREE from 'three';
-import { mat, mesh, box, cyl, cone, ball, leafMesh, tube, glowTexture, P } from './assets.js';
+import { mat, mesh, box, cyl, cone, ball, leafMesh, tube, glowTexture, P, tagFoliage } from './assets.js';
 
 const MUSIC = '/audio/farm-theme.mp3';
 
@@ -143,9 +143,9 @@ function meadowScenery(ctx) {
     }
     const crown = new THREE.Group();
     crown.position.y = 3.3;
-    const c1 = ball(1.15, 0x8cc860, 0.85);
+    const c1 = tagFoliage(ball(1.15, 0x8cc860, 0.85));
     crown.add(c1);
-    const c2 = ball(0.8, 0xa2d474, 0.9);
+    const c2 = tagFoliage(ball(0.8, 0xa2d474, 0.9));
     c2.position.set(0.7, 0.35, 0.3);
     crown.add(c2);
     t.add(crown);
@@ -1380,7 +1380,7 @@ function meadowOuter(ctx) {
   }
   outerInstanced(g, new THREE.CylinderGeometry(0.2, 0.32, 2.4, 6), mat(P.wood), dTrunk);
   const canGeo = new THREE.SphereGeometry(1.5, 8, 7);
-  for (let i = 0; i < 3; i++) outerInstanced(g, canGeo, mat(dShades[i]), dCan[i]);
+  for (let i = 0; i < 3; i++) { const im = outerInstanced(g, canGeo, mat(dShades[i]), dCan[i]); if (im) tagFoliage(im); }
 
   // ---- open-ground details: rocks, bushes, grass near the clearing ----
   const rocks = outerPoints(ctx, rng, R * 0.97, clear + 2, 80).map(([x, z]) => ({

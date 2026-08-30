@@ -601,14 +601,33 @@ export class Homestead {
     if (this.forceSeason) {
       this.season = this.forceSeason;
       this.temperature = baseTempFor(this.forceSeason);
+      this.seasonPhase = 0.6; // forced season sits mid-way (so fall shows full colour)
       return;
     }
     if (this._getSeason) {
       try {
         const s = this._getSeason();
-        if (s && s.id) { this.season = s.id; this.temperature = s.temperature ?? this.temperature; }
+        if (s && s.id) { this.season = s.id; this.temperature = s.temperature ?? this.temperature; this.seasonPhase = s.phase ?? this.seasonPhase; }
       } catch { /* keep last known */ }
     }
+  }
+
+  // recolour tagged deciduous foliage toward autumn as fall deepens
+  _applyFoliageSeason(now) {
+    if (now - (this._foliageCheck || 0) < 1500) return;
+    this._foliageCheck = now;
+    let af = 0;
+    if (this.season === 'fall') af = Math.min(1, 0.3 + (this.seasonPhase || 0) * 1.1);
+    else if (this.season === 'winter') af = 0.35; // a few leaves cling into early winter
+    if (af === 0 && this._autumnApplied === 0) return; // already fully green, nothing to do
+    this._autumnApplied = af;
+    const c = this._folC || (this._folC = new THREE.Color());
+    const c2 = this._folC2 || (this._folC2 = new THREE.Color());
+    this.scene.traverse((o) => {
+      if (!o.isMesh || o.userData.foliage == null || !o.material || !o.material.color) return;
+      c.setHex(o.userData.foliage).lerp(c2.setHex(o.userData.autumnCol || 0xd8632a), af);
+      o.material.color.copy(c);
+    });
   }
 
   // ---- weather + wind: tick the machine, drive particles + scene dimming ----
@@ -628,6 +647,7 @@ export class Homestead {
     this._updatePrecip(now, wi);
     this._updateSnow(now);
     this._updateIce(now);
+    this._applyFoliageSeason(now);
     // rain accelerates structural weathering; winter slows plant growth/encroach
     this.decayRate.weather = 1 + (this.weather.precip === 'rain' ? this.weather.intensity : 0) * 1.6;
     this.decayRate.growth = this.temperature <= 0 ? 0.15 : this.temperature < 8 ? 0.7 : 1.2;

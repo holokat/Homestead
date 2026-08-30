@@ -781,6 +781,16 @@ export function buildCrop(type, stage, seed, ctx = {}) {
 // TREES — unlockable, placeable
 // ============================================================
 
+// Autumn Hollow's foliage palette — deciduous leaves lerp toward these in fall.
+export const AUTUMN_FOLIAGE = [0xd8632a, 0xc23b2e, 0xe8a02e, 0xd88a2a, 0xb8562a];
+// tag a leaf/canopy mesh so the farm can recolour it seasonally (green ↔ autumn)
+export function tagFoliage(m) {
+  if (!m || !m.material || !m.material.color) return m;
+  m.userData.foliage = m.material.color.getHex();               // green base
+  m.userData.autumnCol = AUTUMN_FOLIAGE[Math.floor(Math.random() * AUTUMN_FOLIAGE.length)];
+  return m;
+}
+
 export function buildTree(type) {
   const g = new THREE.Group();
   const trunkH = type === 'avocado' ? 4.6 : 3.4;
@@ -805,6 +815,7 @@ export function buildTree(type) {
     : [[0, canopyY + 0.3, 0, 1.8, 1], [1.2, canopyY - 0.3, 0.4, 1.25, 1], [-1.1, canopyY - 0.25, -0.4, 1.2, 1], [0.2, canopyY - 0.5, 1.1, 1.1, 1]];
   for (const [x, y, z, r, sy] of blobs) {
     const blob = ball(r, canopyColor, sy, 8);
+    if (type !== 'cherry') tagFoliage(blob); // deciduous canopies turn in autumn
     blob.position.set(x, y, z);
     g.add(blob);
   }
