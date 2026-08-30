@@ -1349,6 +1349,25 @@ export class Homestead {
     for (const c of tiles) this._pathsGroup.add(this._buildPathTile(type, tileSize, c.x, c.z));
   }
 
+  // fade path tiles by their wear (washed-out earth) and drop the fully-gone ones
+  applyPathWear(paths) {
+    if (!this._pathsGroup) return;
+    const wearMap = new Map();
+    for (const p of paths) wearMap.set(Math.round(p.x) + ',' + Math.round(p.z), p.wear || 0);
+    const gone = [];
+    for (const tile of this._pathsGroup.children) {
+      const w = wearMap.get(Math.round(tile.position.x) + ',' + Math.round(tile.position.z)) || 0;
+      if (w >= 1) { gone.push(tile); continue; }
+      if (w <= 0.02) continue;
+      const op = 1 - w * 0.8;
+      tile.traverse((o) => {
+        if (!o.isMesh || !o.material) return;
+        o.material.transparent = true; o.material.depthWrite = false; o.material.opacity = op;
+      });
+    }
+    for (const t of gone) this._pathsGroup.remove(t);
+  }
+
   clearPaths() {
     if (this._pathsGroup) { this.scene.remove(this._pathsGroup); this._pathsGroup = null; }
   }

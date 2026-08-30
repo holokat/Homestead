@@ -684,6 +684,15 @@ setInterval(() => {
   ensureOrders();
   updateSeasonHud();
   tickPower();
+  // paths slowly wash away unless re-paved (rain speeds it)
+  if (game.paths && game.paths.length) {
+    const wr = 0.0009 * (farm.decayRate?.weather || 1);
+    for (const p of game.paths) p.wear = Math.min(1.1, (p.wear || 0) + wr);
+    farm.applyPathWear(game.paths);
+    const before = game.paths.length;
+    game.paths = game.paths.filter((p) => (p.wear || 0) < 1);
+    if (game.paths.length !== before) game.save();
+  }
   // timber stumps regrow back into pines
   for (const entry of game.placed) {
     if (entry.opts?.stump && entry.opts.stumpUntil && Date.now() >= entry.opts.stumpUntil) {
@@ -1521,9 +1530,20 @@ function updateSeasonHud() {
   let el = document.getElementById('season-hud');
   if (!el) {
     el = document.createElement('div'); el.id = 'season-hud';
-    el.title = 'the season turns in real time — about three days each';
     document.body.appendChild(el);
+    // in test mode, click the badge to fast-forward one season (for testing)
+    el.addEventListener('click', () => {
+      if (!testMode) return;
+      const SEASON_MS = 3 * 24 * 60 * 60 * 1000;
+      game.seasonEpoch = (game.seasonEpoch || Date.now()) - SEASON_MS;
+      game.save();
+      updateSeasonHud();
+      toast(`⏩ jumped to ${SEASON_LABEL[game.season.id]}`);
+    });
   }
+  el.style.pointerEvents = testMode ? 'auto' : 'none';
+  el.style.cursor = testMode ? 'pointer' : 'default';
+  el.title = testMode ? '🧪 click to fast-forward one season' : 'the season turns in real time — about three days each';
   const s = game.seasonInfo();
   const days = s.msToNext / 86400000;
   const left = days >= 1 ? `${days.toFixed(1)}d` : `${Math.max(1, Math.round(s.msToNext / 3600000))}h`;
@@ -1532,6 +1552,54 @@ function updateSeasonHud() {
   el.className = 'szn-' + s.id;
   el.innerHTML = `${SEASON_ICON[s.id]} <b>${SEASON_LABEL[s.id]}</b> <span class="szn-temp">${Math.round(s.temperature)}°</span>${wIcon} <span class="szn-next">${SEASON_ICON[s.next]} in ${left}</span>`;
 }
+
+// ---- pantry: your food stockpile, grouped by keeping quality ----
+function openPantry() {
+  if (!game) return;
+  let el = document.getElementById('pantry-panel');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'pantry-panel'; el.className = 'pantry-modal';
+    document.body.appendChild(el);
+    el.addEventListener('click', (e) => { if (e.target === el) el.classList.add('hidden'); });
+  }
+  renderPantry(el);
+  el.classList.remove('hidden');
+}
+function renderPantry(el) {
+  const entries = Object.entries(game.inventory).filter(([, n]) => n > 0);
+  const cats = { preserved: [], hearty: [], fresh: [] };
+  let totalVal = 0, totalCount = 0;
+  for (const [id, n] of entries) {
+    const g = goodInfo(id); const unit = sellPrice(g);
+    (cats[goodCategory(id)] || cats.fresh).push({ n, g, unit });
+    totalVal += n * unit; totalCount += n;
+  }
+  const meta = {
+    preserved: ['🫙 Preserved &amp; Cured', 'keeps through winter — sells at a premium'],
+    hearty: ['🍲 Hearty Meals', 'warming winter fare'],
+    fresh: ['🥕 Fresh', 'perishable — eat or preserve it before winter'],
+  };
+  const section = (cat) => {
+    const items = cats[cat]; if (!items.length) return '';
+    const [title, sub] = meta[cat];
+    const rows = items.sort((a, b) => b.n - a.n).map((it) =>
+      `<div class="pn-row"><span class="pn-ic">${it.g.icon}</span><span class="pn-nm">${esc(it.g.name)}</span><span class="pn-ct">×${it.n}</span><span class="pn-vl">${it.unit * it.n}${COIN}</span></div>`).join('');
+    return `<div class="pn-cat pn-${cat}"><div class="pn-cat-h">${title} <span class="pn-cat-sub">${sub}</span></div>${rows}</div>`;
+  };
+  const sid = game.season.id;
+  const note = sid === 'winter'
+    ? '❄️ Winter — preserved &amp; hearty foods sell high; fresh produce is scarce and cheap.'
+    : sid === 'fall' ? '🍂 Autumn — lay in preserves before winter arrives.' : '';
+  el.innerHTML = `<div class="pn-card">
+    <div class="pn-head">🥫 Pantry <span class="pn-cap">📦 ${totalCount}/${game.storageCap || '∞'}</span><button class="pn-x" id="pn-close">×</button></div>
+    ${note ? `<div class="pn-note">${note}</div>` : ''}
+    ${entries.length
+      ? section('preserved') + section('hearty') + section('fresh') + `<div class="pn-total">Stockpile value: <b>${totalVal}${COIN}</b></div>`
+      : '<div class="pn-empty">Your pantry is empty.<br/>Harvest crops, collect from animals, cook in your workshops — and preserve food for winter.</div>'}
+  </div>`;
+  el.querySelector('#pn-close').onclick = () => el.classList.add('hidden');
+}
+$('#pantry-btn')?.addEventListener('click', openPantry);
 
 // ---- power economy: generators supply, lights/machines/winter-heat demand ----
 const POWER_SUPPLY = {
@@ -2060,7 +2128,12 @@ function startPathPaving(item) {
       } else {
         const cost = tiles.length * item.price;
         if (!testMode) { game.addCoins(-cost); renderCoins(); }
-        for (const t of tiles) game.paths.push({ x: t.x, z: t.z, type: item.pathType });
+        for (const t of tiles) {
+          // re-paving an existing (worn) tile refreshes it instead of duplicating
+          const ex = game.paths.find((p) => Math.round(p.x) === Math.round(t.x) && Math.round(p.z) === Math.round(t.z));
+          if (ex) { ex.wear = 0; ex.type = item.pathType; }
+          else game.paths.push({ x: t.x, z: t.z, type: item.pathType, wear: 0 });
+        }
         game.save();
         farm.addPathTiles(tiles, item.pathType, 3);
         audio.playSfx('construction', 0.5);

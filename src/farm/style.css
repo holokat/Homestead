@@ -1347,5 +1347,36 @@ body.book-open #sidebar { transform: translateX(0); }
 .hc-sw:hover { transform: scale(1.08); }
 .hc-sw.on { border-color: #4f9636; box-shadow: 0 0 0 2px rgba(79, 150, 54, 0.5), inset 0 -3px 6px rgba(0, 0, 0, 0.2); }
 .hc-hint { font-size: 11px; color: #9a7c4e; margin-top: 12px; }
+
+/* ---- pantry panel ---- */
+.pantry-modal {
+  position: fixed; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center;
+  background: rgba(24, 14, 6, 0.5); backdrop-filter: blur(2px);
+}
+.pantry-modal.hidden { display: none; }
+.pn-card {
+  width: min(420px, 90vw); max-height: 82vh; overflow-y: auto;
+  background: #fbf3df; border: 3px solid #b98a4f; border-radius: 16px;
+  box-shadow: 0 14px 40px rgba(40, 25, 8, 0.5); padding: 16px 18px; color: #5a3f1c;
+  animation: tr-pop 0.28s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+  scrollbar-width: thin; scrollbar-color: #cfa262 transparent;
+}
+.pn-card::-webkit-scrollbar { width: 7px; }
+.pn-card::-webkit-scrollbar-thumb { background: #cfa262; border-radius: 4px; }
+.pn-head { font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pn-cap { font-size: 12px; font-weight: 700; color: #8a6a3a; }
+.pn-x { margin-left: auto; border: 0; background: none; font-size: 22px; cursor: pointer; color: #8a6a3a; line-height: 1; }
+.pn-note { font-size: 12px; color: #6a86b0; background: rgba(108, 138, 176, 0.12); border-radius: 8px; padding: 7px 10px; margin-bottom: 10px; }
+.pn-cat { margin-bottom: 12px; }
+.pn-cat-h { font-size: 13px; font-weight: 800; color: #6a4a20; border-bottom: 2px solid rgba(180, 140, 80, 0.35); padding-bottom: 4px; margin-bottom: 5px; }
+.pn-cat-sub { font-size: 10px; font-weight: 500; color: #a5875a; }
+.pn-preserved .pn-cat-h { color: #2f6a8a; }
+.pn-row { display: flex; align-items: center; gap: 8px; padding: 3px 2px; font-size: 13px; }
+.pn-ic { font-size: 16px; width: 20px; text-align: center; }
+.pn-nm { flex: 1; }
+.pn-ct { color: #7a5a2c; font-weight: 700; }
+.pn-vl { width: 58px; text-align: right; color: #4f9636; font-weight: 700; }
+.pn-total { margin-top: 8px; text-align: right; font-size: 13px; border-top: 2px solid rgba(180, 140, 80, 0.35); padding-top: 8px; }
+.pn-empty { color: #9a7c4e; font-size: 13px; text-align: center; padding: 20px 10px; line-height: 1.5; }
 #fence-hud .fh-cta { opacity: 0.82; font-weight: 600; font-size: 11px; margin-left: 4px; }
 @keyframes fh-pulse { 0%,100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.05); } }
