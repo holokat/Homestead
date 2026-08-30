@@ -323,6 +323,12 @@ export class Game {
   // storageCap is per-good and raised by storage infrastructure (main recomputes it)
   storageCap = 50;
 
+  hasGoods(cost) { return Object.entries(cost || {}).every(([id, n]) => (this.inventory[id] || 0) >= n); }
+  spendGoods(cost) {
+    for (const [id, n] of Object.entries(cost || {})) this.inventory[id] = Math.max(0, (this.inventory[id] || 0) - n);
+    this.save();
+  }
+
   addGood(id, n = 1) {
     const have = this.inventory[id] || 0;
     const add = Math.max(0, Math.min(n, this.storageCap - have));

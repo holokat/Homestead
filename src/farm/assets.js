@@ -1090,8 +1090,48 @@ function buildFishPond(koi) {
   return g;
 }
 
+// ---- timber (choppable) trees, stumps, and craftable wood furniture ----
+export function buildTimberPine() {
+  const g = new THREE.Group();
+  const trunk = cyl(0.3, 0.44, 3.4, 0x6b4a2c, 7); trunk.position.y = 1.7; g.add(trunk);
+  let y = 2.5;
+  for (let i = 0; i < 3; i++) {
+    const c = cone(1.75 - i * 0.45, 1.7, i % 2 ? 0x3f7a44 : 0x347040, 7);
+    c.position.y = y; g.add(c); y += 0.85;
+  }
+  g.userData.sway = { speed: 1.05, phase: Math.random() * 6, amp: 0.02 };
+  return g;
+}
+export function buildStump() {
+  const g = new THREE.Group();
+  const s = cyl(0.52, 0.62, 0.7, 0x6b4a2c, 9); s.position.y = 0.35; g.add(s);
+  const top = cyl(0.5, 0.5, 0.07, 0x9c7040, 12); top.position.y = 0.72; g.add(top);
+  return g;
+}
+export function buildFurniture(type) {
+  const g = new THREE.Group();
+  if (type === 'garden_bench') {
+    const seat = box(1.9, 0.13, 0.55, P.wood); seat.position.y = 0.52; g.add(seat);
+    const back = box(1.9, 0.5, 0.1, P.wood); back.position.set(0, 0.78, -0.22); g.add(back);
+    for (const sx of [-0.82, 0.82]) { const l = box(0.13, 0.52, 0.13, P.woodDark); l.position.set(sx, 0.26, 0); g.add(l); }
+    return g;
+  }
+  // picnic_table (default)
+  const top = box(2.4, 0.16, 1.2, P.wood); top.position.y = 0.96; g.add(top);
+  for (const sx of [-1, 1]) { const l = box(0.16, 0.96, 1.1, P.woodDark); l.position.set(sx, 0.48, 0); g.add(l); }
+  for (const sz of [-0.78, 0.78]) {
+    const bench = box(2.4, 0.12, 0.42, P.woodLight); bench.position.set(0, 0.56, sz); g.add(bench);
+    for (const sx of [-1, 1]) { const l = box(0.12, 0.56, 0.12, P.woodDark); l.position.set(sx, 0.28, sz); g.add(l); }
+  }
+  return g;
+}
+
 export function buildObject(type, opts = {}) {
   switch (type) {
+    case 'pine_timber': return opts.stump ? buildStump() : buildTimberPine();
+    case 'stump': return buildStump();
+    case 'picnic_table': return buildFurniture('picnic_table');
+    case 'garden_bench': return buildFurniture('garden_bench');
     case 'barrel': return buildBarrel();
     case 'hay': return buildHay();
     case 'lantern': return buildLantern();
@@ -1112,4 +1152,5 @@ export const OBJECT_RADIUS = {
   chicken: 1.2, tractor: 2.6, sign: 3.6, koipond: 3.6, goldpond: 3.6,
   apple: 3.6, peach: 3.6, avocado: 3.6, cherry: 3.9,
   campfire: 1.5, tent: 2.4, camp_chair: 1.0, camp_lantern: 0.9, fish_trap: 1.2,
+  pine_timber: 2.6, stump: 1.2, picnic_table: 2.6, garden_bench: 2.0,
 };

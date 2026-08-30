@@ -684,6 +684,15 @@ setInterval(() => {
   ensureOrders();
   updateSeasonHud();
   tickPower();
+  // timber stumps regrow back into pines
+  for (const entry of game.placed) {
+    if (entry.opts?.stump && entry.opts.stumpUntil && Date.now() >= entry.opts.stumpUntil) {
+      entry.opts.stump = false; entry.opts.stumpUntil = null;
+      const fid = [...placedRuntime.entries()].find(([, u]) => u === entry.uid)?.[0];
+      if (fid != null) { farm.removeObject(fid); placedRuntime.delete(fid); placedRuntime.set(farm.placeObject(entry), entry.uid); }
+      game.save();
+    }
+  }
   const now = Date.now();
   let dirty = false;
   // finished construction sites become their real buildings
@@ -1384,6 +1393,7 @@ const GROUPS = [
     subs: [
       { id: 'processor', label: 'Workshops', items: () => PROCESSORS },
       { id: 'bow', label: '🏹 Bows', items: () => BOWS },
+      { id: 'tool', label: '🪓 Tools', items: () => AXES },
     ],
   },
   {
@@ -1403,6 +1413,7 @@ const TOOLS = [
   { id: 'select', icon: '🖐', img: '/ui/tool-hand.png', title: 'select / harvest / move' },
   { id: 'water', icon: '💧', img: '/ui/tool-water.png', title: 'watering can — click crops to grow them' },
   { id: 'fish', icon: '🎣', img: '/ui/tool-fish.png', title: 'go fishing at the dock' },
+  { id: 'chop', icon: '🪓', title: 'axe — click a Timber Pine to chop it for wood', needsAxe: true },
 ];
 
 // Bows: bought in the Craft tab, then equipped from the Inventory tab to hunt.
@@ -1414,6 +1425,26 @@ const BOWS = [
 function bowInfo(id) { return BOWS.find((b) => b.id === id) || null; }
 function bowTier(id) { return bowInfo(id)?.tier || 0; }
 let equippedBow = null; // id of the bow currently in hand, or null
+
+// axes: a craftable tool bought in the Craft tab, owned like a bow, that arms
+// the "chop" tool for felling timber pines into wood.
+const AXES = [
+  { id: 'axe', name: 'Felling Axe', icon: '🪓', price: 90, tier: 1, desc: 'Chop timber pines into usable wood.' },
+];
+function buyAxe(axe) {
+  if (!requireOwner()) return false;
+  if (game.owned.includes(axe.id)) return true;
+  if (game.coins < axe.price && !testMode) {
+    toast(`🪓 a ${esc(axe.name)} costs ${axe.price}${COIN} — earn a little more first`, false);
+    audio.playSfx('denied', 0.25); return false;
+  }
+  if (testMode) { if (!game.owned.includes(axe.id)) game.owned.push(axe.id); game.save(); }
+  else if (!game.buy(axe)) return false;
+  renderCoins();
+  audio.playSfx('loot_coin', 0.55);
+  toast(`🪓 ${esc(axe.name)} crafted! Pick the 🪓 chop tool, then click a Timber Pine.`);
+  return true;
+}
 
 function buyBow(bow) {
   if (!requireOwner()) return false;
@@ -1898,8 +1929,8 @@ function renderHud() {
     }
   }
 
-  // tools
-  $('#hud-tools').innerHTML = TOOLS.map((t) =>
+  // tools (the chop tool only appears once you've crafted an axe)
+  $('#hud-tools').innerHTML = TOOLS.filter((t) => !t.needsAxe || game.owned.includes('axe') || testMode).map((t) =>
     `<button class="cell tool ${activeTool === t.id ? 'active' : ''}" data-tool="${t.id}" title="${t.title}">${t.img ? `<img class="tool-img" src="${t.img}" alt="${t.id}">` : t.icon}</button>`
   ).join('');
   for (const btn of document.querySelectorAll('#hud-tools .cell')) {
@@ -2061,7 +2092,29 @@ function onSlotClick(kind, id, e) {
     if (buyBow(bow)) { activeGroup = 'inv'; renderHud(); }
     return;
   }
+  // axes: craft, then use the 🪓 chop tool on timber pines
+  if (kind === 'tool') {
+    const axe = AXES.find((a) => a.id === id);
+    if (!axe) return;
+    if (game.owned.includes(axe.id) || testMode) { toast('🪓 you have an axe — pick the 🪓 chop tool and click a Timber Pine'); return; }
+    if (buyAxe(axe)) renderHud();
+    return;
+  }
   const item = findAnyItem(kind, id);
+  // wood furniture: paid in goods (wood), placed like decor
+  if (item && item.cost) {
+    if (!requireOwner()) return;
+    if (!game.hasGoods(item.cost) && !testMode) {
+      const need = Object.entries(item.cost).map(([g, n]) => `${n} ${goodInfo(g).icon}`).join(' + ');
+      toast(`🪵 <b>${esc(item.name)}</b> needs ${need} — chop some timber first`, false);
+      audio.playSfx('denied', 0.25); return;
+    }
+    if (!testMode) { game.spendGoods(item.cost); renderResChips(); }
+    audio.playSfx('click', 0.3);
+    setTool('select'); setMode(null); movingEntry = null;
+    beginPlacement(kind, id, {});
+    return;
+  }
   if (item && item.isPath) { startPathPaving(item); return; }
   const blocked = isInfra(id) ? infraBlocker(item) : null;
   if (blocked) {
@@ -2637,6 +2690,31 @@ function petAnimal(farmId, entry, kind) {
   game.bumpStat('petted');
   for (const [thr, msg] of BOND_UNLOCKS) {
     if (before < thr && entry.opts.bond >= thr) { bigMoment(msg(entry.type)); audio.playSfx('unlock', 0.4); break; }
+  }
+}
+
+// chop a timber pine (multi-hit) → wood, leaving a stump that regrows
+function chopTimber(farmId, entry, item) {
+  if (!game.owned.includes('axe') && !testMode) { toast('🪓 craft an axe first — Craft tab → 🪓 Tools'); return; }
+  entry.opts = entry.opts || {};
+  if (entry.opts.stump) { toast('🌱 just a stump — it will regrow soon'); return; }
+  entry.opts.chopHp = (entry.opts.chopHp ?? item.chopHp ?? 3) - 1;
+  audio.playSfx('construction', 0.4);
+  const rec = farm.placed.get(farmId);
+  if (rec) farm.burstAtPosition(rec.group.position, false);
+  if (entry.opts.chopHp <= 0) {
+    const w = item.wood || 3;
+    const got = w - game.addGood('wood', w);
+    entry.opts.stump = true; entry.opts.stumpUntil = Date.now() + (item.regrowMs || 180000); entry.opts.chopHp = null;
+    farm.removeObject(farmId); placedRuntime.delete(farmId);
+    placedRuntime.set(farm.placeObject(entry), entry.uid);
+    game.save(); renderResChips();
+    if (rec) floatAtWorld(rec.group.position, `+${got} 🪵`);
+    toast(`🪓 timber! +${got} 🪵 wood — a stump remains and will regrow`);
+    game.bumpStat('chopped');
+  } else {
+    game.save();
+    toast(`🪓 chopping… ${entry.opts.chopHp} more hit${entry.opts.chopHp > 1 ? 's' : ''}`);
   }
 }
 
@@ -3311,6 +3389,8 @@ function handleObjectClick(farmId) {
     return;
   }
   const item = findAnyItem(entry.kind, entry.type);
+  // axe equipped + a choppable tree → chop it for wood (repurposes the click)
+  if (activeTool === 'chop' && item?.choppable) { chopTimber(farmId, entry, item); return; }
   const actions = [];
   // pets & animals can be befriended — pet/play to build a bond
   if (ANIMALS.some((a) => a.id === entry.type)) addPetActions(actions, farmId, entry);

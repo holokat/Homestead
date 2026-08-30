@@ -40,6 +40,11 @@ export const TREES = [
 ];
 
 export const OBJECTS = [
+  // a woodlot you plant and chop for timber (needs an axe); regrows from a stump
+  { id: 'pine_timber', name: 'Timber Pine', icon: '🌲', price: 15, choppable: true, wood: 3, chopHp: 3, regrowMs: 180000 },
+  // craftable wood furniture — placed for wood, not coins (see cost)
+  { id: 'garden_bench', name: 'Garden Bench', icon: '🪑', cost: { wood: 5 } },
+  { id: 'picnic_table', name: 'Picnic Table', icon: '🪵', cost: { wood: 8 } },
   { id: 'barrel', name: 'Barrel', icon: '🛢️', req: { notes: 2 }, price: 10 },
   { id: 'hay', name: 'Hay Bale', icon: '🌾', req: { reactions: 3 }, price: 15 },
   { id: 'lantern', name: 'Lantern', icon: '🏮', req: { replies: 2 }, price: 20 },
@@ -110,6 +115,7 @@ export const GOODS = {
   game_meat: { name: 'Wild Game', icon: '🍗', sell: 4 },
   bear_meat: { name: 'Bear Meat', icon: '🐻', sell: 12 },
   trapped_fish: { name: 'Trapped Fish', icon: '🐟', sell: 7 }, // passive catch from a fish trap
+  wood: { name: 'Wood', icon: '🪵', sell: 3 }, // chopped from timber pines with an axe
 };
 
 // good "kind" for seasonal market demand: winter pays a premium for food that
