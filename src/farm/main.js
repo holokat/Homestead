@@ -2592,6 +2592,91 @@ function handleProductReady(farmId) {
   else audio.playSfx('click', 0.2); // fruit trees etc.
 }
 
+// ---- pets: bonding + interaction ----
+const PET_COOLDOWN = { pet: 6000, play: 16000, train: 45000 };
+const BOND_UNLOCKS = [
+  [20, (t) => `🧣 your ${t} trusts you now — it wears its colours proudly.`],
+  [40, (t) => `📣 bond 40! Your ${t} will come when you call (open its menu → “call here”).`],
+  [60, (t) => `🐾 bond 60! Your ${t} loves to follow wherever you're looking.`],
+  [80, (t) => `💞 bond 80! Your ${t} is a true companion — a lucky charm around the farm.`],
+];
+function bondHearts(bond) {
+  const h = Math.round(bond / 20);
+  return '💗'.repeat(h) + '🤍'.repeat(Math.max(0, 5 - h));
+}
+function addPetActions(actions, farmId, entry) {
+  entry.opts = entry.opts || {};
+  const bond = Math.round(entry.opts.bond || 0);
+  actions.push({ label: `🖐 pet  ${bondHearts(bond)}`, keepOpen: true, fn: () => petAnimal(farmId, entry, 'pet') });
+  if (entry.type === 'dog' || entry.type === 'cat') {
+    actions.push({ label: '🎾 play', keepOpen: true, fn: () => petAnimal(farmId, entry, 'play') });
+  }
+  if (bond >= 40) {
+    actions.push({
+      label: '📣 call here', fn: () => { farm.callPet(farmId); audio.playSfx('click', 0.3); toast(`📣 here, ${entry.type}!`); },
+    });
+  }
+  if (entry.type === 'dog') addDogActions(actions, farmId, entry, bond);
+}
+function petAnimal(farmId, entry, kind) {
+  entry.opts = entry.opts || {};
+  const now = Date.now();
+  const last = entry.opts['last_' + kind] || 0;
+  if (now - last < PET_COOLDOWN[kind]) { toast('😴 give them a moment…'); return; }
+  entry.opts['last_' + kind] = now;
+  const before = entry.opts.bond || 0;
+  const gain = (kind === 'play' ? 6 : 3) * ((farm.temperature ?? 14) < 2 ? 1.3 : 1);
+  entry.opts.bond = Math.min(100, before + gain);
+  game.save();
+  try { audio.playAnimal(entry.type); } catch {}
+  audio.playSfx('pickup', 0.3);
+  farm.petReact(farmId, kind);
+  const rec = farm.placed.get(farmId);
+  if (rec) floatAtWorld(rec.group.position, kind === 'play' ? '🎾' : '💗');
+  game.bumpStat('petted');
+  for (const [thr, msg] of BOND_UNLOCKS) {
+    if (before < thr && entry.opts.bond >= thr) { bigMoment(msg(entry.type)); audio.playSfx('unlock', 0.4); break; }
+  }
+}
+
+function addDogActions(actions, farmId, entry, bond) {
+  entry.opts = entry.opts || {};
+  if (entry.opts.skill === 'herder') {
+    const herding = !!entry.opts.herding;
+    actions.push({ label: herding ? '💤 stand down' : '🐕 herd loose animals', fn: () => toggleHerd(farmId, entry) });
+  } else if (bond >= 50) {
+    const reps = entry.opts.trainReps || 0;
+    actions.push({ label: `🎓 train to herd (${reps}/3)`, keepOpen: true, fn: () => trainDog(farmId, entry) });
+  } else {
+    actions.push({ label: `🎓 train to herd 🔒 (bond ${bond}/50)`, fn: () => toast('🐕 build a stronger bond first — pet & play to reach bond 50.') });
+  }
+}
+function trainDog(farmId, entry) {
+  entry.opts = entry.opts || {};
+  const now = Date.now();
+  if (now - (entry.opts.last_train || 0) < PET_COOLDOWN.train) { toast('🐕 let them rest between drills…'); return; }
+  entry.opts.last_train = now;
+  entry.opts.trainReps = (entry.opts.trainReps || 0) + 1;
+  farm.petReact(farmId, 'play');
+  try { audio.playAnimal('dog'); } catch {}
+  audio.playSfx('unlock', 0.3);
+  const rec = farm.placed.get(farmId); if (rec) floatAtWorld(rec.group.position, '🎯');
+  if (entry.opts.trainReps >= 3) {
+    entry.opts.skill = 'herder';
+    game.bumpStat('dogsTrained');
+    bigMoment('🎓 your dog learned to HERD! Open its menu → “herd loose animals” to put it to work.');
+  } else toast(`🎓 good drill! ${entry.opts.trainReps}/3`);
+  game.save();
+}
+function toggleHerd(farmId, entry) {
+  entry.opts = entry.opts || {};
+  entry.opts.herding = !entry.opts.herding;
+  farm.setHerder(farmId, entry.opts.herding);
+  game.save();
+  audio.playSfx('flip', 0.3);
+  toast(entry.opts.herding ? '🐕 on the job — herding loose animals to their pens!' : '💤 the dog stands down.');
+}
+
 function tryFish() {
   if (!requireOwner()) return;
   if (farm.fishing) { toast('🎣 already fishing — watch the bobber!'); return; }
@@ -3226,6 +3311,8 @@ function handleObjectClick(farmId) {
   }
   const item = findAnyItem(entry.kind, entry.type);
   const actions = [];
+  // pets & animals can be befriended — pet/play to build a bond
+  if (ANIMALS.some((a) => a.id === entry.type)) addPetActions(actions, farmId, entry);
   // tech-tree fan-out: upgrade in place (hand pump → well → deep well…)
   const nextId = isInfra(entry.type) ? INFRA_BY_ID[entry.type]?.upgradesTo : null;
   const next = nextId ? INFRA_BY_ID[nextId] : null;

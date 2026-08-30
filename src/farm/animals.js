@@ -534,6 +534,19 @@ export function updateAnimal(rec, now) {
   if (dt > 0.1) dt = 0.1; // tab-away safety
   const ease = Math.min(1, dt * 8);
 
+  // being petted/played with — a burst of tail-wag + a happy hop, pausing wander
+  if (s.react && now < s.react.until) {
+    const env = Math.sin(((s.react.until - now) / 1500) * Math.PI); // ease 0→1→0
+    body.position.y = Math.abs(Math.sin(now / 110)) * 0.2 * env;
+    if (parts.tail) {
+      if (isGLB) parts.tail.rotation.y = Math.sin(now / 55) * 0.6 * env;
+      else parts.tail.rotation.x = Math.sin(now / 55) * 0.7 * env;
+    }
+    if (parts.head) parts.head.rotation[isGLB ? 'x' : 'z'] = (isGLB ? -0.18 : 0.18) * env;
+    return;
+  }
+  if (s.react && now >= s.react.until) s.react = null;
+
   if (s.mode === 'idle') {
     // subtle breathe bob
     body.position.y = Math.sin(now * 0.0025 + s.phase) * 0.025;

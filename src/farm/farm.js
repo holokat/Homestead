@@ -755,6 +755,72 @@ export class Homestead {
     return { frozen: (this._iceFreeze || 0) >= 0.55, hole: !!this._iceHole };
   }
 
+  // a pet reacts to being petted/played with — a burst of tail-wag + a hop
+  petReact(id, kind) {
+    const ar = this.animalRecs.get(id);
+    if (ar) ar.state.react = { until: (this._lastNow || performance.now()) + 1500, kind };
+  }
+
+  // send a bonded pet toward where the camera is looking (the avatar-free "come here")
+  callPet(id) {
+    const ar = this.animalRecs.get(id);
+    if (!ar) return;
+    const t = this.controls.target;
+    ar.state.mode = 'wander'; ar.state.tx = t.x; ar.state.tz = t.z; ar.state.until = (this._lastNow || performance.now()) + 20000; ar.state.react = null;
+  }
+
+  // toggle a trained dog's herding behavior
+  setHerder(id, on) {
+    if (!this._herders) this._herders = new Set();
+    if (on) this._herders.add(id); else this._herders.delete(id);
+  }
+
+  _nearestPenFor(x, z) {
+    let best = null, bd = 1e9;
+    for (const rec of this.placed.values()) {
+      if (!rec.group?.userData?.pen) continue;
+      const d = (rec.x - x) ** 2 + (rec.z - z) ** 2;
+      if (d < bd) { bd = d; best = { x: rec.x, z: rec.z, id: rec.id }; }
+    }
+    return best;
+  }
+
+  // a herding dog steers the nearest loose animal toward a pen (benevolent predator)
+  _updateHerders(now) {
+    if (!this._herders || !this._herders.size) return;
+    for (const id of [...this._herders]) {
+      const dog = this.animalRecs.get(id);
+      if (!dog) { this._herders.delete(id); continue; }
+      const dp = dog.group.position;
+      let target = null, bd = 1e9;
+      for (const [aid, ar] of this.animalRecs) {
+        if (aid === id || ar.bounds || ar.type === 'dog' || ar.type === 'cat') continue;
+        const d = (ar.group.position.x - dp.x) ** 2 + (ar.group.position.z - dp.z) ** 2;
+        if (d < bd) { bd = d; target = ar; }
+      }
+      if (!target) { dog.state.until = Math.min(dog.state.until, now + 500); continue; } // nothing loose → idle
+      const ax = target.group.position.x, az = target.group.position.z;
+      const pen = this._nearestPenFor(ax, az);
+      if (!pen) continue;
+      const toPen = Math.atan2(pen.z - az, pen.x - ax);
+      const flankX = ax - Math.cos(toPen) * 3.2, flankZ = az - Math.sin(toPen) * 3.2;
+      dog.state.mode = 'wander'; dog.state.tx = flankX; dog.state.tz = flankZ; dog.state.until = now + 4000;
+      if (Math.hypot(dp.x - flankX, dp.z - flankZ) < 3.6) { // dog is behind it → drive toward the pen
+        target.state.mode = 'wander'; target.state.tx = pen.x; target.state.tz = pen.z; target.state.until = now + 3000;
+      }
+    }
+  }
+
+  // is there a (guard) dog near this world point? predators flee dogs
+  _dogNear(px, pz, r = 14) {
+    for (const ar of this.animalRecs.values()) {
+      if (ar.type !== 'dog') continue;
+      const g = ar.group.position;
+      if ((g.x - px) ** 2 + (g.z - pz) ** 2 < r * r) return true;
+    }
+    return false;
+  }
+
   // windbreaks register lee zones that calm the wind for shelter/power/heating
   setShelters(zones) { this._shelters = Array.isArray(zones) ? zones : []; }
 
@@ -856,6 +922,12 @@ export class Homestead {
     for (const p of [...this.predators]) {
       const h = p.userData.hunt, gp = p.position;
       h.t0 += dt * 1000;
+      // a dog on patrol nearby scares predators off — the farm's guardian
+      if ((h.state === 'prowl' || h.state === 'stalk') && this._dogNear(gp.x, gp.z, 15)) {
+        h.state = 'flee'; h.fleeUntil = now + 3600;
+        h.nextHunt = now + 9000 + Math.random() * 10000;
+        if (!h._barkedAt || now - h._barkedAt > 4000) { h._barkedAt = now; try { this.onAnimalSound && this.onAnimalSound('dog'); } catch {} }
+      }
       if (h.state === 'prowl' && now >= h.nextHunt) {
         const prey = this._nearestPrey(gp.x, gp.z);
         if (prey) { h.state = 'stalk'; h.targetId = prey.id; } else h.nextHunt = now + 5000 + Math.random() * 8000;
@@ -2456,6 +2528,7 @@ export class Homestead {
       animalRec.soundRange = [minMs, maxMs];
       animalRec.nextSound = performance.now() + 2000 + Math.random() * maxMs;
       this.animalRecs.set(id, animalRec);
+      if (type === 'dog' && opts?.herding) this.setHerder(id, true); // restore herding on load
       // hit follows a wandering animal — parent it to the group instead
       hit.position.set(0, 3, 0);
       this.scene.remove(hit);
@@ -3240,6 +3313,7 @@ export class Homestead {
     this._updateArrows(now);
     this._updateBlood(now);
     this._updatePredators(now);
+    this._updateHerders(now);
     // dolphins lap the island out on the water and periodically breach in a
     // nose-up arc before splashing back down
     if (this.dolphins && this.dolphins.length) {
